@@ -10,7 +10,7 @@
 
 # Decisões de escopo
 
-Estas decisões orientam o desenvolvimento. O repositório ainda contém apenas o bootstrap. Os recursos abaixo não estão implementados.
+Estas decisões orientam o desenvolvimento. Os recursos de produto abaixo não estão implementados.
 
 - Usar ESP32 como base do dispositivo.
 - Permitir que o próprio dono ou uma empresa parceira instale o dispositivo. Reduzir o atrito de adoção nos dois caminhos.
@@ -26,3 +26,4 @@ Estas decisões orientam o desenvolvimento. O repositório ainda contém apenas 
 - Definir o projeto para o hackathon e preparar o site e o vídeo de apresentação da ideia.
 - Adiar a implementação do firmware, do aplicativo e da plataforma enquanto trabalhamos nessa apresentação.
 - Apresentar os recursos ainda não implementados como proposta. Identificar simulações e representações conceituais.
+- Preparar o vídeo como apresentação falada da ideia pelo time, com o Google Meet e um quadro no Excalidraw.
