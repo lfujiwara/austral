@@ -7,3 +7,16 @@
 5. Documentação descreve só o que existe no repositório. Nada planejado aparece como pronto.
 6. Textos em português do Brasil, frases curtas, voz ativa, sem adjetivos de marketing e sem travessões.
 7. Commits pequenos, um assunto por commit.
+
+# Decisões de escopo
+
+Estas decisões orientam o desenvolvimento. O repositório ainda contém apenas o bootstrap. Os recursos abaixo não estão implementados.
+
+- Usar ESP32 como base do dispositivo.
+- Permitir que o próprio dono ou uma empresa parceira instale o dispositivo. Reduzir o atrito de adoção nos dois caminhos.
+- Suportar aplicativo e navegador como caminhos de instalação e uso. A experiência de instalação deve ser simples nos dois.
+- Usar o WhatsApp como canal de uso cotidiano do cliente.
+- Oferecer interfaces no aplicativo e no webapp, além de APIs para integração com empresas de manutenção.
+- Desenvolver um case para impressão em 3D. Prever sensores, bateria e alimentação para recarga no conjunto físico.
+- Buscar um pareamento simples. NFC, Bluetooth e Wi-Fi são opções a validar, sem combinação técnica fechada.
+- Manter a stack em aberto enquanto discutimos o esqueleto do projeto.
