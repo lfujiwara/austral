@@ -30,3 +30,4 @@ Estas decisões orientam o desenvolvimento. Os recursos de produto abaixo não e
 - Manter o estágio de implementação nas decisões técnicas. No README, no quadro e na fala do pitch, focar o produto e seus benefícios, sem avisos internos sobre fase de ideia ou testes pendentes. Não inventar resultados medidos, clientes ou disponibilidade comercial.
 - Preparar o vídeo como apresentação falada da ideia pelo time, com o Google Meet e um quadro no Excalidraw.
 - Manter roteiros, quadros e prévias de apresentação locais em `outputs/`. Versionar esses materiais apenas quando o usuário pedir.
+- Manter o site de apresentação em uma página estática, com comunicação positiva e curta, publicada pelo GitHub Pages. A stack do restante da plataforma continua em aberto.
