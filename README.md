@@ -2,7 +2,9 @@
 
 Projeto para a trilha Logística & automação do Hack Brasil 2026.
 
-Mercados, bares e restaurantes podem descobrir uma falha no freezer só depois de perder o estoque. A proposta da Austral é combinar sensores de temperatura e medição de consumo de energia para identificar possíveis falhas e distinguir esses eventos de uma reposição de estoque.
+A Austral é uma proposta de plataforma de IoT AI-native para a cadeia de frio. Ela combina temperatura e consumo de energia para ajudar a reduzir perdas de produtos e gastos com energia.
+
+O foco inicial são freezers e refrigeradores de mercados, bares e restaurantes. O dono pode descobrir uma falha só depois de perder o estoque. Queremos analisar os sinais para identificar possíveis falhas e distinguir esses eventos de uma reposição de estoque.
 
 A solução proposta inclui avisos pelo WhatsApp com a causa provável e o valor do estoque em risco, além de contato com manutenção e um laudo para o técnico.
 

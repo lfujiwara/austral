@@ -12,6 +12,8 @@
 
 Estas decisões orientam o desenvolvimento. Os recursos de produto abaixo não estão implementados.
 
+- Definir a Austral como uma proposta de plataforma de IoT AI-native para a cadeia de frio.
+- Monitorar temperatura e consumo de energia de freezers e refrigeradores. Reduzir perdas de produtos e gastos com energia são objetivos a validar.
 - Usar ESP32 como base do dispositivo.
 - Permitir que o próprio dono ou uma empresa parceira instale o dispositivo. Reduzir o atrito de adoção nos dois caminhos.
 - Suportar aplicativo e navegador como caminhos de instalação e uso. A experiência de instalação deve ser simples nos dois.
