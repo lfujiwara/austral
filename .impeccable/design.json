@@ -1,0 +1,278 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-17T05:54:31.991008+00:00",
+  "title": "Design da Austral",
+  "extensions": {
+    "colorMeta": {
+      "ink": {
+        "role": "primary",
+        "displayName": "Verde escuro",
+        "canonical": "#163f35",
+        "tonalRamp": [
+          "oklch(15.0% 0.0123 174.6)",
+          "oklch(26.0% 0.0247 174.6)",
+          "oklch(38.0% 0.0395 174.6)",
+          "oklch(49.0% 0.0493 174.6)",
+          "oklch(61.0% 0.0493 174.6)",
+          "oklch(72.0% 0.0395 174.6)",
+          "oklch(84.0% 0.0247 174.6)",
+          "oklch(95.0% 0.0074 174.6)"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Fundo claro",
+        "canonical": "#f5f8f3",
+        "tonalRamp": [
+          "oklch(15.0% 0.0018 132.4)",
+          "oklch(26.0% 0.0037 132.4)",
+          "oklch(38.0% 0.0058 132.4)",
+          "oklch(49.0% 0.0073 132.4)",
+          "oklch(61.0% 0.0073 132.4)",
+          "oklch(72.0% 0.0058 132.4)",
+          "oklch(84.0% 0.0037 132.4)",
+          "oklch(95.0% 0.0011 132.4)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Texto secundário",
+        "canonical": "#4f685e",
+        "tonalRamp": [
+          "oklch(15.0% 0.0084 168.5)",
+          "oklch(26.0% 0.0169 168.5)",
+          "oklch(38.0% 0.0270 168.5)",
+          "oklch(49.0% 0.0337 168.5)",
+          "oklch(61.0% 0.0337 168.5)",
+          "oklch(72.0% 0.0270 168.5)",
+          "oklch(84.0% 0.0169 168.5)",
+          "oklch(95.0% 0.0051 168.5)"
+        ]
+      },
+      "accent": {
+        "role": "secondary",
+        "displayName": "Verde claro",
+        "canonical": "#d7f39b",
+        "tonalRamp": [
+          "oklch(15.0% 0.0290 123.0)",
+          "oklch(26.0% 0.0581 123.0)",
+          "oklch(38.0% 0.0929 123.0)",
+          "oklch(49.0% 0.1161 123.0)",
+          "oklch(61.0% 0.1161 123.0)",
+          "oklch(72.0% 0.0929 123.0)",
+          "oklch(84.0% 0.0581 123.0)",
+          "oklch(95.0% 0.0174 123.0)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Borda clara",
+        "canonical": "#cedbd0",
+        "tonalRamp": [
+          "oklch(15.0% 0.0051 150.1)",
+          "oklch(26.0% 0.0102 150.1)",
+          "oklch(38.0% 0.0163 150.1)",
+          "oklch(49.0% 0.0204 150.1)",
+          "oklch(61.0% 0.0204 150.1)",
+          "oklch(72.0% 0.0163 150.1)",
+          "oklch(84.0% 0.0102 150.1)",
+          "oklch(95.0% 0.0031 150.1)"
+        ]
+      },
+      "chat": {
+        "role": "neutral",
+        "displayName": "Fundo da conversa",
+        "canonical": "#edf3e8",
+        "tonalRamp": [
+          "oklch(15.0% 0.0040 130.4)",
+          "oklch(26.0% 0.0079 130.4)",
+          "oklch(38.0% 0.0127 130.4)",
+          "oklch(49.0% 0.0159 130.4)",
+          "oklch(61.0% 0.0159 130.4)",
+          "oklch(72.0% 0.0127 130.4)",
+          "oklch(84.0% 0.0079 130.4)",
+          "oklch(95.0% 0.0024 130.4)"
+        ]
+      },
+      "muted-on-dark": {
+        "role": "neutral",
+        "displayName": "Texto sobre verde",
+        "canonical": "#d0e6d8",
+        "tonalRamp": [
+          "oklch(15.0% 0.0075 157.9)",
+          "oklch(26.0% 0.0150 157.9)",
+          "oklch(38.0% 0.0240 157.9)",
+          "oklch(49.0% 0.0300 157.9)",
+          "oklch(61.0% 0.0300 157.9)",
+          "oklch(72.0% 0.0240 157.9)",
+          "oklch(84.0% 0.0150 157.9)",
+          "oklch(95.0% 0.0045 157.9)"
+        ]
+      },
+      "white": {
+        "role": "neutral",
+        "displayName": "Branco",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "oklch(15.0% 0.0000 89.9)",
+          "oklch(26.0% 0.0000 89.9)",
+          "oklch(38.0% 0.0000 89.9)",
+          "oklch(49.0% 0.0000 89.9)",
+          "oklch(61.0% 0.0000 89.9)",
+          "oklch(72.0% 0.0000 89.9)",
+          "oklch(84.0% 0.0000 89.9)",
+          "oklch(95.0% 0.0000 89.9)"
+        ]
+      },
+      "headline-accent": {
+        "role": "primary",
+        "displayName": "Verde do título",
+        "canonical": "#4b7135",
+        "tonalRamp": [
+          "oklch(15.0% 0.0245 135.2)",
+          "oklch(26.0% 0.0491 135.2)",
+          "oklch(38.0% 0.0786 135.2)",
+          "oklch(49.0% 0.0982 135.2)",
+          "oklch(61.0% 0.0982 135.2)",
+          "oklch(72.0% 0.0786 135.2)",
+          "oklch(84.0% 0.0491 135.2)",
+          "oklch(95.0% 0.0147 135.2)"
+        ]
+      },
+      "focus": {
+        "role": "primary",
+        "displayName": "Verde de foco",
+        "canonical": "#668f31",
+        "tonalRamp": [
+          "oklch(15.0% 0.0328 129.7)",
+          "oklch(26.0% 0.0657 129.7)",
+          "oklch(38.0% 0.1051 129.7)",
+          "oklch(49.0% 0.1313 129.7)",
+          "oklch(61.0% 0.1313 129.7)",
+          "oklch(72.0% 0.1051 129.7)",
+          "oklch(84.0% 0.0657 129.7)",
+          "oklch(95.0% 0.0197 129.7)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Título principal",
+        "purpose": "Benefício no início da página."
+      },
+      "headline": {
+        "displayName": "Título da seção",
+        "purpose": "Percurso de uso na faixa do produto."
+      },
+      "body": {
+        "displayName": "Texto de apoio",
+        "purpose": "Explicação abaixo do título principal."
+      },
+      "label": {
+        "displayName": "Rótulo",
+        "purpose": "Temas selecionáveis da conversa."
+      }
+    },
+    "shadows": [
+      {
+        "name": "conversation",
+        "value": "0 24px 60px -22px #00000030",
+        "purpose": "Separar o painel de conversa do fundo claro."
+      }
+    ],
+    "motion": [
+      {
+        "name": "button",
+        "value": "background .2s",
+        "purpose": "Mudança de fundo do botão principal."
+      },
+      {
+        "name": "topic",
+        "value": "background .15s, border-color .15s",
+        "purpose": "Mudança de estado dos temas."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact",
+        "value": "1050px"
+      },
+      {
+        "name": "mobile",
+        "value": "700px"
+      },
+      {
+        "name": "wide",
+        "value": "1600px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Botão principal",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Link para a seção do produto.",
+      "html": "<a class=\"ds-button\" href=\"#produto\">Conheça a Austral <svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M5 12h14m-6-6 6 6-6 6\"/></svg></a>",
+      "css": ".ds-button{font-family:Manrope,sans-serif;display:inline-flex;align-items:center;gap:30px;background:var(--ink,#163f35);color:#fff;padding:18px 23px;border-radius:100px;font-size:14px;font-weight:700;text-decoration:none;transition:background .2s}.ds-button svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}.ds-button:hover{background:#28614c}.ds-button:focus-visible,.ds-topic:focus-visible,.ds-nav a:focus-visible{outline:3px solid var(--focus,#668f31);outline-offset:6px}@media(prefers-reduced-motion:reduce){.ds-button{transition:none}}"
+    },
+    {
+      "name": "Tema da conversa",
+      "kind": "chip",
+      "refersTo": "topic",
+      "description": "Opção disponível no grupo de benefícios.",
+      "html": "<button class=\"ds-topic\" type=\"button\" aria-pressed=\"false\">Energia</button>",
+      "css": ".ds-topic{font-family:Manrope,sans-serif;border:1px solid #c1d0bd;background:transparent;color:var(--ink,#163f35);border-radius:50px;padding:12px 14px;font-size:12px;font-weight:700;cursor:pointer;transition:background .15s,border-color .15s}.ds-topic:hover{background:#dcebcf}.ds-button:focus-visible,.ds-topic:focus-visible,.ds-nav a:focus-visible{outline:3px solid var(--focus,#668f31);outline-offset:6px}@media(prefers-reduced-motion:reduce){.ds-topic{transition:none}}"
+    },
+    {
+      "name": "Tema selecionado",
+      "kind": "chip",
+      "refersTo": "topic-active",
+      "description": "Benefício selecionado na conversa.",
+      "html": "<button class=\"ds-topic\" type=\"button\" aria-pressed=\"true\">Meu estoque</button>",
+      "css": ".ds-topic{font-family:Manrope,sans-serif;border:1px solid var(--ink,#163f35);background:var(--ink,#163f35);color:#fff;border-radius:50px;padding:12px 14px;font-size:12px;font-weight:700;cursor:pointer;transition:background .15s,border-color .15s}.ds-topic:hover{background:#28614c}.ds-button:focus-visible,.ds-topic:focus-visible,.ds-nav a:focus-visible{outline:3px solid var(--focus,#668f31);outline-offset:6px}@media(prefers-reduced-motion:reduce){.ds-topic{transition:none}}"
+    },
+    {
+      "name": "Navegação",
+      "kind": "nav",
+      "description": "Link curto no cabeçalho.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Principal\"><a href=\"#produto\">O produto <svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M6 18 18 6M6 6h12v12\"/></svg></a></nav>",
+      "css": ".ds-nav{font-family:Manrope,sans-serif;color:var(--ink,#163f35)}.ds-nav a{color:inherit;text-decoration:none;font-size:14px;font-weight:700;border-bottom:1px solid var(--line,#cedbd0);padding-block:10px}.ds-nav a:hover{border-color:var(--ink,#163f35)}.ds-nav svg{width:15px;height:15px;margin-left:20px;vertical-align:middle;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}.ds-button:focus-visible,.ds-topic:focus-visible,.ds-nav a:focus-visible{outline:3px solid var(--focus,#668f31);outline-offset:6px}"
+    },
+    {
+      "name": "Balão da conversa",
+      "kind": "custom",
+      "description": "Mensagem de abertura dentro do painel.",
+      "html": "<div class=\"ds-message\">O cuidado com seu estoque<br>começa por uma conversa.<span class=\"ds-check\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 16\"><path d=\"m2 8 4 4L16 2M11 11l2 2L23 3\"/></svg></span></div>",
+      "css": ".ds-message{font-family:Manrope,sans-serif;position:relative;background:#fff;color:var(--ink,#163f35);padding:18px 24px 27px 19px;font-size:17px;font-weight:600;line-height:1.6;border-radius:0 17px 17px 17px;max-width:320px}.ds-check{position:absolute;bottom:8px;right:14px;color:#67923b}.ds-check svg{width:19px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}"
+    },
+    {
+      "name": "Painel de conversa",
+      "kind": "card",
+      "refersTo": "conversation",
+      "description": "Painel com cabeçalho escuro e área de mensagens clara.",
+      "html": "<div class=\"ds-conversation\"><div class=\"ds-top\"><span class=\"ds-avatar\">a.</span><div><strong>Austral</strong><span>Seu equipamento, acompanhado.</span></div></div><div class=\"ds-body\">O que vamos acompanhar?</div><div class=\"ds-bottom\"><span class=\"ds-dot\"></span>IoT e IA a serviço da sua operação.</div></div>",
+      "css": ".ds-conversation{font-family:Manrope,sans-serif;background:var(--ink,#163f35);color:var(--paper,#f5f8f3);border-radius:var(--radius,24px);overflow:hidden;box-shadow:0 24px 60px -22px #00000030;max-width:470px}.ds-top{display:flex;align-items:center;gap:12px;padding:24px 26px;border-bottom:1px solid #ffffff20}.ds-avatar{display:grid;place-items:center;width:45px;height:45px;border-radius:50%;background:var(--accent,#d7f39b);color:var(--ink,#163f35);font-size:27px;font-weight:800;letter-spacing:-2px}.ds-top strong{display:block;font-size:15px}.ds-top div span{font-size:12px;color:#d0e6d8}.ds-body{padding:28px 25px 30px;background:#edf3e8;color:var(--muted,#4f685e);font-size:12px}.ds-bottom{padding:18px 25px;display:flex;align-items:center;gap:9px;font-size:12px;font-weight:500;color:#d6e3d9}.ds-dot{width:6px;height:6px;border-radius:50%;background:var(--accent,#d7f39b);flex-shrink:0}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Conversa da Austral",
+    "overview": "Página de venda curta. Mantém o verde e a relação com o WhatsApp do quadro da Austral. O cliente pediu comunicação positiva e delegou a escolha visual.\n\nTítulos grandes apresentam o benefício. Um painel de conversa permite explorar estoque, energia e manutenção. A faixa escura abaixo explica o percurso do cliente.",
+    "keyCharacteristics": [
+      "Verde escuro sobre fundo claro.",
+      "Tipografia Manrope e títulos com entrelinha curta.",
+      "Painel de conversa com temas selecionáveis."
+    ],
+    "rules": [],
+    "dos": [
+      "Use Manrope e os tokens de cor presentes no CSS.",
+      "Mantenha o foco de teclado visível nos links e botões.",
+      "Respeite a preferência por movimento reduzido.",
+      "Apresente a conversa como exploração local dos benefícios."
+    ],
+    "donts": [
+      "Não trate os botões da conversa como envio de mensagens.",
+      "Não substitua os ícones lineares por caracteres de texto."
+    ]
+  }
+}
