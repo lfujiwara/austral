@@ -20,3 +20,9 @@ Estas decisões orientam o desenvolvimento. O repositório ainda contém apenas 
 - Desenvolver um case para impressão em 3D. Prever sensores, bateria e alimentação para recarga no conjunto físico.
 - Buscar um pareamento simples. NFC, Bluetooth e Wi-Fi são opções a validar, sem combinação técnica fechada.
 - Manter a stack em aberto enquanto discutimos o esqueleto do projeto.
+
+# Prioridade atual
+
+- Definir o projeto para o hackathon e preparar o site e o vídeo de apresentação da ideia.
+- Adiar a implementação do firmware, do aplicativo e da plataforma enquanto trabalhamos nessa apresentação.
+- Apresentar os recursos ainda não implementados como proposta. Identificar simulações e representações conceituais.
