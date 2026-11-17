@@ -26,3 +26,5 @@ service_account*.json
 .config/gcloud/
 
 .DS_Store
+
+/outputs/

@@ -27,5 +27,6 @@ Estas decisões orientam o desenvolvimento. Os recursos de produto abaixo não e
 
 - Definir o projeto para o hackathon e preparar o site e o vídeo de apresentação da ideia.
 - Adiar a implementação do firmware, do aplicativo e da plataforma enquanto trabalhamos nessa apresentação.
-- Manter o estágio de implementação na documentação do repositório. No quadro e na fala do pitch, focar o produto e seus benefícios, sem avisos internos sobre fase de ideia ou testes pendentes. Não inventar resultados medidos, clientes ou disponibilidade comercial.
+- Manter o estágio de implementação nas decisões técnicas. No README, no quadro e na fala do pitch, focar o produto e seus benefícios, sem avisos internos sobre fase de ideia ou testes pendentes. Não inventar resultados medidos, clientes ou disponibilidade comercial.
 - Preparar o vídeo como apresentação falada da ideia pelo time, com o Google Meet e um quadro no Excalidraw.
+- Manter roteiros, quadros e prévias de apresentação locais em `outputs/`. Versionar esses materiais apenas quando o usuário pedir.
