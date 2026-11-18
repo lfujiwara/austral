@@ -1,0 +1,98 @@
+{
+  "prefix": "austral/{device}",
+  "qos": 0,
+  "retain": true,
+  "published": [
+    {
+      "topic": "status",
+      "pattern": "^(online|offline)$",
+      "description": "online when the device connects. offline when it shuts down cleanly or when the broker loses it (last will)."
+    },
+    {
+      "topic": "sensor/product_temperature/state",
+      "pattern": "^(-?\\d+\\.\\d|nan)$",
+      "unit": "°C",
+      "every_seconds": 10,
+      "description": "Product probe, one decimal. nan when the probe does not answer."
+    },
+    {
+      "topic": "sensor/air_temperature/state",
+      "pattern": "^(-?\\d+\\.\\d|nan)$",
+      "unit": "°C",
+      "every_seconds": 10,
+      "description": "Cabinet air probe, one decimal. nan when the probe does not answer."
+    },
+    {
+      "topic": "sensor/ambient_temperature/state",
+      "pattern": "^(-?\\d+\\.\\d|nan)$",
+      "unit": "°C",
+      "every_seconds": 10,
+      "description": "Room probe, one decimal. nan when the probe does not answer."
+    },
+    {
+      "topic": "sensor/wifi_signal/state",
+      "pattern": "^-?\\d+$",
+      "unit": "dBm",
+      "every_seconds": 60,
+      "description": "Received signal strength of the Wi-Fi connection."
+    },
+    {
+      "topic": "sensor/uptime/state",
+      "pattern": "^\\d+$",
+      "unit": "s",
+      "every_seconds": 60,
+      "description": "Seconds since boot. Drops back after a reboot or an OTA update."
+    },
+    {
+      "topic": "binary_sensor/local_temperature_alarm/state",
+      "pattern": "^(ON|OFF)$",
+      "at_boot": false,
+      "description": "ON after the product stays above -12 °C for 10 minutes. OFF 1 minute after it drops back. Published only when it changes."
+    },
+    {
+      "topic": "switch/buzzer/state",
+      "pattern": "^(ON|OFF)$",
+      "description": "Buzzer output on GPIO25. Follows the local alarm unless commanded."
+    },
+    {
+      "topic": "text/mqtt_broker/state",
+      "pattern": "^\\S{3,64}$",
+      "description": "Broker address in use. Stored in flash."
+    },
+    {
+      "topic": "number/read_interval/state",
+      "pattern": "^(5|[1-9][05]|[12]\\d[05]|300)\\.0+$",
+      "unit": "s",
+      "description": "Probe polling interval, 5 to 300 in steps of 5. Stored in flash."
+    },
+    {
+      "topic": "debug",
+      "pattern": "^[\\s\\S]*$",
+      "description": "Device log lines at the firmware log level, with ANSI colors."
+    }
+  ],
+  "commands": [
+    {
+      "topic": "switch/buzzer/command",
+      "pattern": "^(ON|OFF|TOGGLE)$",
+      "description": "Turns the buzzer on or off."
+    },
+    {
+      "topic": "text/mqtt_broker/command",
+      "pattern": "^\\S{3,64}$",
+      "description": "Changes the broker address and reconnects. Stored in flash."
+    },
+    {
+      "topic": "number/read_interval/command",
+      "pattern": "^(5|[1-9][05]|[12]\\d[05]|300)(\\.0+)?$",
+      "description": "Changes the probe polling interval in seconds, 5 to 300 in steps of 5. Stored in flash."
+    }
+  ],
+  "outside_prefix": [
+    {
+      "topic": "esphome/discover/{device}",
+      "pattern": "^\\{[\\s\\S]*\\}$",
+      "description": "Published by ESPHome on every connection, retained. JSON with the device IP addresses, MAC, ESPHome version and board. Not checked by the server."
+    }
+  ]
+}

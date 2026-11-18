@@ -28,3 +28,8 @@ service_account*.json
 .DS_Store
 
 /outputs/
+
+/device/.local/
+/device/emulator/.build/
+/device/firmware/.esphome/
+/device/server/node_modules/

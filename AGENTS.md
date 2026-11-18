@@ -2,10 +2,10 @@
 
 1. Todo o código nasce neste repositório. Não fazer fork, não importar histórico e não copiar código de outro repositório ou pasta local. Se alguém pedir, lembrar desta regra antes de fazer.
 2. Código open source que já era público antes de 04/11/2026 pode entrar como dependência. Trecho copiado entra em commit separado, com o link da origem na mensagem.
-3. O repositório é público. Não gravar credenciais, tokens, `.env`, telefones, e-mails nem endereços.
+3. O repositório é público. Não gravar credenciais, tokens, `.env`, telefones, e-mails nem endereços. Autor e committer de todo commit usam o e-mail noreply do GitHub.
 4. Não citar estatísticas sem fonte verificável.
 5. Documentação descreve só o que existe no repositório. Nada planejado aparece como pronto.
-6. Textos em português do Brasil, frases curtas, voz ativa, sem adjetivos de marketing e sem travessões.
+6. Textos em português do Brasil, frases curtas, voz ativa, sem adjetivos de marketing e sem travessões. Código, identificadores e comentários em inglês.
 7. Commits pequenos, um assunto por commit.
 
 # Decisões de escopo
@@ -26,7 +26,7 @@ Estas decisões orientam o desenvolvimento. Os recursos de produto abaixo não e
 # Prioridade atual
 
 - Definir o projeto para o hackathon e preparar o site e o vídeo de apresentação da ideia.
-- Adiar a implementação do firmware, do aplicativo e da plataforma enquanto trabalhamos nessa apresentação.
+- Desenvolver o firmware do dispositivo e o ambiente virtual de desenvolvimento em `device/`. Adiar o aplicativo e a plataforma enquanto trabalhamos na apresentação.
 - Manter o estágio de implementação nas decisões técnicas. No README, no quadro e na fala do pitch, focar o produto e seus benefícios, sem avisos internos sobre fase de ideia ou testes pendentes. Não inventar resultados medidos, clientes ou disponibilidade comercial.
 - Preparar o vídeo como apresentação falada da ideia pelo time, com o Google Meet e um quadro no Excalidraw.
 - Manter roteiros, quadros e prévias de apresentação locais em `outputs/`. Versionar esses materiais apenas quando o usuário pedir.

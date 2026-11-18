@@ -1,0 +1,180 @@
+substitutions:
+  device_name: austral-device
+  alarm_threshold: "-12.0"
+  default_broker: !secret mqtt_broker
+
+esphome:
+  name: ${device_name}
+  friendly_name: Austral Device
+  on_boot:
+    priority: -100
+    then:
+      - lambda: |-
+          for (auto *s : {(PollingComponent *) id(product_temperature), (PollingComponent *) id(air_temperature), (PollingComponent *) id(ambient_temperature)}) {
+            s->stop_poller();
+            s->set_update_interval((uint32_t) id(read_interval).state * 1000);
+            s->start_poller();
+          }
+          if (id(mqtt_broker).state.size() >= 3 && id(mqtt_broker).state != "${default_broker}") {
+            id(mqtt_client)->set_broker_address(id(mqtt_broker).state);
+            id(mqtt_client)->disable();
+            id(mqtt_client)->enable();
+          }
+
+esp32:
+  board: esp32dev
+
+logger:
+  level: INFO
+
+wifi:
+  id: wifi_client
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # Lower peak transmit current for boards with a weak 3.3 V regulator.
+  output_power: 8.5dB
+  ap:
+    ssid: "Austral-Device-Fallback"
+    password: !secret fallback_password
+
+captive_portal:
+
+web_server:
+  port: 80
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+time:
+  - platform: sntp
+    id: sntp_time
+
+mqtt:
+  id: mqtt_client
+  broker: !secret mqtt_broker
+  port: 8883
+  certificate_authority: !secret mqtt_ca
+  username: !secret mqtt_username
+  password: !secret mqtt_password
+  topic_prefix: austral/${device_name}
+  discovery: false
+
+i2c:
+  sda: GPIO21
+  scl: GPIO22
+  scan: true
+
+font:
+  - file: "gfonts://Roboto"
+    id: display_font
+    size: 10
+
+display:
+  - platform: ssd1306_i2c
+    model: "SSD1306 128x32"
+    address: 0x3C
+    update_interval: 2s
+    lambda: |-
+      auto t = [](sensor::Sensor *s) { return s->has_state() ? str_sprintf("%.1f", s->state) : std::string("--"); };
+      it.printf(0, 0,  id(display_font), "Prod %s Air %s", t(id(product_temperature)).c_str(), t(id(air_temperature)).c_str());
+      it.printf(0, 11, id(display_font), "Amb %s  %s", t(id(ambient_temperature)).c_str(), id(local_alarm).state ? "ALARM!" : "alarm ok");
+      it.printf(0, 22, id(display_font), "WiFi %s  MQTT %s", id(wifi_client).is_connected() ? "ok" : "--", id(mqtt_client)->is_connected() ? "ok" : "--");
+
+one_wire:
+  - platform: gpio
+    pin: GPIO4
+    id: one_wire_bus
+
+sensor:
+  - platform: dallas_temp
+    one_wire_id: one_wire_bus
+    address: !secret product_sensor_address
+    name: "Product temperature"
+    id: product_temperature
+    resolution: 12
+    update_interval: 10s
+
+  - platform: dallas_temp
+    one_wire_id: one_wire_bus
+    address: !secret air_sensor_address
+    name: "Air temperature"
+    id: air_temperature
+    resolution: 12
+    update_interval: 10s
+
+  - platform: dallas_temp
+    one_wire_id: one_wire_bus
+    address: !secret ambient_sensor_address
+    name: "Ambient temperature"
+    id: ambient_temperature
+    resolution: 12
+    update_interval: 10s
+
+  - platform: wifi_signal
+    name: "WiFi signal"
+    update_interval: 60s
+
+  - platform: uptime
+    name: "Uptime"
+    update_interval: 60s
+
+output:
+  - platform: gpio
+    pin: GPIO25
+    id: buzzer_output
+
+switch:
+  - platform: output
+    output: buzzer_output
+    name: "Buzzer"
+    id: buzzer
+
+text:
+  - platform: template
+    name: "MQTT broker"
+    id: mqtt_broker
+    mode: text
+    optimistic: true
+    min_length: 3
+    max_length: 64
+    initial_value: !secret mqtt_broker
+    restore_value: true
+    set_action:
+      - lambda: |-
+          id(mqtt_client)->set_broker_address(x);
+          id(mqtt_client)->disable();
+          id(mqtt_client)->enable();
+
+number:
+  - platform: template
+    name: "Read interval"
+    id: read_interval
+    unit_of_measurement: s
+    min_value: 5
+    max_value: 300
+    step: 5
+    initial_value: 10
+    restore_value: true
+    optimistic: true
+    set_action:
+      - lambda: |-
+          for (auto *s : {(PollingComponent *) id(product_temperature), (PollingComponent *) id(air_temperature), (PollingComponent *) id(ambient_temperature)}) {
+            s->stop_poller();
+            s->set_update_interval((uint32_t) x * 1000);
+            s->start_poller();
+          }
+
+binary_sensor:
+  - platform: template
+    name: "Local temperature alarm"
+    id: local_alarm
+    lambda: |-
+      return id(product_temperature).has_state() && id(product_temperature).state > ${alarm_threshold};
+    filters:
+      - delayed_on: 10min
+      - delayed_off: 1min
+    on_press:
+      - switch.turn_on: buzzer
+    on_release:
+      - switch.turn_off: buzzer

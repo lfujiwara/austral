@@ -1,0 +1,97 @@
+diff --git a/hw/misc/esp32_wifi_ap.c b/hw/misc/esp32_wifi_ap.c
+index af517791bc..84c9a51385 100644
+--- a/hw/misc/esp32_wifi_ap.c
++++ b/hw/misc/esp32_wifi_ap.c
+@@ -70,6 +70,44 @@ access_point_info access_points[]={
+ 
+ int nb_aps=sizeof(access_points)/sizeof(access_point_info);
+ 
++static bool radio_down;
++static int64_t radio_checked = -NANOSECONDS_PER_SECOND;
++
++#define DEAUTH_REPEATS 5
++
++static bool radio_off(void)
++{
++    return radio_down;
++}
++
++static void poll_radio_state(void)
++{
++    const char *path = getenv("ESP32_WIFI_STATE_FILE");
++    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++    if (!path || now - radio_checked < NANOSECONDS_PER_SECOND) {
++        return;
++    }
++    radio_checked = now;
++    gchar *text = NULL;
++    bool down = g_file_get_contents(path, &text, NULL, NULL) && g_str_has_prefix(g_strstrip(text), "off");
++    g_free(text);
++    if (down != radio_down) {
++        printf("esp32_wifi: access points %s\n", down ? "off" : "on");
++        fflush(stdout);
++    }
++    radio_down = down;
++}
++
++static void send_deauth(Esp32WifiState *s)
++{
++    struct mac80211_frame *frame = Esp32_WLAN_create_deauthentication();
++    frame->signal_strength = -30;
++    memcpy(frame->destination_address, BROADCAST, 6);
++    memcpy(s->ap_macaddr, s->associated_ap_macaddr, 6);
++    Esp32_WLAN_init_ap_frame(s, frame);
++    Esp32_WLAN_insert_frame(s, frame);
++}
++
+ /* The host side of the network as a station of the guest's SoftAP,
+  * alongside the guest's own station link with the fork's access points - the
+  * guest may run both at once, as Tasmota and ESPHome do while trying Wi-Fi
+@@ -265,7 +303,23 @@ static void Esp32_WLAN_beacon_timer(void *opaque)
+ { 
+     struct mac80211_frame *frame;
+     Esp32WifiState *s = (Esp32WifiState *)opaque;
++    static int deauths_left;
+     esp32_softap_tick(s);
++    poll_radio_state();
++    if (s->mode == Esp32_Mode_Station && radio_off()) {
++        if (s->ap_state == Esp32_WLAN__STATE_ASSOCIATED ||
++            s->ap_state == Esp32_WLAN__STATE_AUTHENTICATED) {
++            deauths_left = DEAUTH_REPEATS;
++            s->ap_state = Esp32_WLAN__STATE_NOT_AUTHENTICATED;
++        }
++        if (deauths_left > 0) {
++            deauths_left--;
++            send_deauth(s);
++        }
++        timer_mod(s->beacon_timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + BEACON_TIME);
++        return;
++    }
++    deauths_left = 0;
+     // only send a beacon if we are an access point
+     if((ENABLE_BEACON)&&(s->mode == Esp32_Mode_Station)){
+       if(s->ap_state!=Esp32_WLAN__STATE_STA_ASSOCIATED) {
+@@ -558,6 +612,9 @@ static ssize_t Esp32_WLAN_receive(NetClientState *ncs,
+     if (esp32_softap_receive(s, buf, size)) {
+         return size;
+     }
++    if (s->mode == Esp32_Mode_Station && radio_off()) {
++        return size;
++    }
+     /*
+      * A 802.3 packet comes from the qemu network. The
+      * access points turns it into a 802.11 frame and
+@@ -805,6 +862,13 @@ void Esp32_WLAN_handle_frame(Esp32WifiState *s, struct mac80211_frame *frame)
+         Esp32_WLAN_frame_delivered(s);
+         return;
+     }
++    if (s->mode == Esp32_Mode_Station && radio_off()) {
++        if (frame->frame_control.type == IEEE80211_TYPE_DATA) {
++            send_deauth(s);
++        }
++        Esp32_WLAN_frame_delivered(s);
++        return;
++    }
+     if(frame->frame_control.type == IEEE80211_TYPE_MGT) {        
+         switch(frame->frame_control.sub_type) {
+             case IEEE80211_TYPE_MGT_SUBTYPE_BEACON:
