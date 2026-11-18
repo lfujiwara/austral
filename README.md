@@ -9,3 +9,5 @@ O dono recebe avisos pelo WhatsApp com a causa provável do problema e o valor d
 O técnico recebe um laudo com gráficos, modelo do equipamento e histórico de reparos. Empresas parceiras acompanham os chamados pelo webapp ou integram seus sistemas pelas APIs da Austral.
 
 Projeto para a trilha Logística & automação do Hack Brasil 2026.
+
+O firmware do dispositivo e o ambiente de desenvolvimento ficam em [`device/`](device/README.md).

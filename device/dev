@@ -1,0 +1,285 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Generated files hold passwords and keys.
+umask 077
+
+root="$(cd "$(dirname "$0")" && pwd)"
+local_dir="$root/.local"
+tls_dir="$local_dir/tls"
+control_dir="$local_dir/control"
+run_dir="$local_dir/run"
+firmware_dir="$local_dir/firmware"
+flash="$local_dir/flash.bin"
+qemu="$root/emulator/.build/qemu/build/qemu-system-xtensa"
+esphome="$local_dir/venv/bin/esphome"
+esphome_version="2026.9.1"
+dependency_cutoff="2026-11-03"
+http_port="${AUSTRAL_HTTP_PORT:-8080}"
+device_web_port="${AUSTRAL_DEVICE_WEB_PORT:-18080}"
+
+product_rom="0xD8A1000000000128"
+air_rom="0x81A1000000000228"
+ambient_rom="0xB6A1000000000328"
+
+usage() {
+  cat <<EOF
+usage: ./dev <command>
+
+  setup              check host tools, build the emulator, install ESPHome and the server
+  build              compile the firmware for the emulator and write a fresh flash image
+  ota                compile the firmware and send it to the running emulated device over OTA
+  up                 start the server and the emulated device in the background
+  down               stop them
+  server             run the server in the foreground
+  emulate            run the emulated device in the foreground
+  temps P A M        set product, air and ambient temperatures (°C, or "unplugged")
+  wifi on|off        switch the emulated access points
+  scenario NAME      run scenarios/NAME.sh (warm-up, sensor-unplug, wifi-drop)
+  test               end-to-end test in the emulator
+  logs               follow the device serial log
+EOF
+}
+
+need() {
+  command -v "$1" > /dev/null || { echo "missing $1: $2" >&2; exit 1; }
+}
+
+ensure_tls() {
+  [ -f "$tls_dir/server.pem" ] && return
+  (
+    umask 077
+    mkdir -p "$tls_dir"
+    # A new CA would invalidate the one compiled into existing firmware, so keep it when present.
+    [ -f "$tls_dir/ca.pem" ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 3650 \
+      -subj "/CN=austral-dev-ca" -keyout "$tls_dir/ca.key" -out "$tls_dir/ca.pem" 2> /dev/null
+    # The emulated device reaches the host at 192.168.4.2.
+    openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj "/CN=192.168.4.2" \
+      -keyout "$tls_dir/server.key" -out "$tls_dir/server.csr" 2> /dev/null
+    printf 'subjectAltName=IP:192.168.4.2,IP:127.0.0.1\nbasicConstraints=CA:FALSE\n' > "$tls_dir/ext.cnf"
+    openssl x509 -req -in "$tls_dir/server.csr" -CA "$tls_dir/ca.pem" -CAkey "$tls_dir/ca.key" \
+      -CAcreateserial -days 3650 -extfile "$tls_dir/ext.cnf" -out "$tls_dir/server.pem" 2> /dev/null
+  )
+}
+
+ensure_credentials() {
+  [ -f "$local_dir/credentials.env" ] && return
+  mkdir -p "$local_dir"
+  (
+    umask 077
+    {
+      echo "AUSTRAL_MQTT_USERNAME=device"
+      echo "AUSTRAL_MQTT_PASSWORD=$(openssl rand -hex 16)"
+      echo "AUSTRAL_OTA_PASSWORD=$(openssl rand -hex 16)"
+      echo "AUSTRAL_FALLBACK_PASSWORD=$(openssl rand -hex 16)"
+    } > "$local_dir/credentials.env"
+  )
+}
+
+load_credentials() {
+  ensure_credentials
+  set -a
+  # shellcheck disable=SC1091
+  . "$local_dir/credentials.env"
+  set +a
+}
+
+set_temps() {
+  mkdir -p "$control_dir"
+  local file="$control_dir/temperatures.txt" rom value
+  : > "$file.next"
+  for pair in "$product_rom:$1" "$air_rom:$2" "$ambient_rom:$3"; do
+    rom="${pair%%:*}"
+    value="${pair#*:}"
+    [ "$value" = "unplugged" ] && continue
+    if ! [[ "$value" =~ ^-?[0-9]+(\.[0-9]+)?$ ]] || ! awk -v t="$value" 'BEGIN { exit !(t >= -55 && t <= 125) }'; then
+      echo "temperature must be between -55 and 125 °C, or unplugged: $value" >&2
+      rm -f "$file.next"
+      exit 1
+    fi
+    echo "$rom $value" >> "$file.next"
+  done
+  mv "$file.next" "$file"
+}
+
+set_wifi() {
+  mkdir -p "$control_dir"
+  case "$1" in
+    on|off) echo "$1" > "$control_dir/wifi.txt.next" && mv "$control_dir/wifi.txt.next" "$control_dir/wifi.txt" ;;
+    *) echo "wifi takes on or off" >&2; exit 1 ;;
+  esac
+}
+
+cmd_setup() {
+  for tool in brew git node npm openssl uv truncate; do need "$tool" "install it first"; done
+  local missing=()
+  for formula in glib pixman libgcrypt libslirp meson ninja pkgconf; do
+    brew list --versions "$formula" > /dev/null || missing+=("$formula")
+  done
+  [ ${#missing[@]} -eq 0 ] || brew install "${missing[@]}"
+  "$root/emulator/build.sh" > /dev/null
+  if ! { [ -x "$esphome" ] && "$esphome" version | grep -q -F "$esphome_version"; }; then
+    uv venv --quiet --python 3.13 "$local_dir/venv"
+    VIRTUAL_ENV="$local_dir/venv" uv pip install --quiet --exclude-newer "$dependency_cutoff" "esphome==$esphome_version"
+  fi
+  (cd "$root/server" && npm ci --no-audit --no-fund --silent)
+  ensure_tls
+  ensure_credentials
+  echo "setup done"
+}
+
+compile_firmware() {
+  [ -x "$esphome" ] || { echo "run ./dev setup first" >&2; exit 1; }
+  ensure_tls
+  load_credentials
+  mkdir -p "$firmware_dir"
+  cp "$root/firmware/device.yaml" "$firmware_dir/device.yaml"
+  cat > "$firmware_dir/emulator.yaml" <<'EOF'
+packages:
+  device: !include device.yaml
+
+logger:
+  level: DEBUG
+EOF
+  {
+    echo 'wifi_ssid: "PICSimLabWifi"'
+    echo 'wifi_password: ""'
+    echo "fallback_password: \"$AUSTRAL_FALLBACK_PASSWORD\""
+    echo "ota_password: \"$AUSTRAL_OTA_PASSWORD\""
+    echo 'mqtt_broker: "192.168.4.2"'
+    echo "mqtt_username: \"$AUSTRAL_MQTT_USERNAME\""
+    echo "mqtt_password: \"$AUSTRAL_MQTT_PASSWORD\""
+    echo "product_sensor_address: \"$product_rom\""
+    echo "air_sensor_address: \"$air_rom\""
+    echo "ambient_sensor_address: \"$ambient_rom\""
+    echo 'mqtt_ca: |'
+    sed 's/^/  /' "$tls_dir/ca.pem"
+  } > "$firmware_dir/secrets.yaml"
+  (cd "$firmware_dir" && "$esphome" compile emulator.yaml > "$firmware_dir/compile.log" 2>&1) || {
+    tail -20 "$firmware_dir/compile.log" >&2
+    exit 1
+  }
+}
+
+cmd_build() {
+  [ -z "$(running_pid device)" ] || { echo "the emulated device is running; use ./dev ota, or ./dev down first" >&2; exit 1; }
+  compile_firmware
+  local image="$firmware_dir/.esphome/build/austral-device/build/firmware.factory.bin"
+  [ "$(wc -c < "$image")" -le 4194304 ] || { echo "firmware image larger than the 4 MB flash" >&2; exit 1; }
+  cp "$image" "$flash"
+  truncate -s 4M "$flash"
+  echo "flash image: $flash"
+}
+
+ensure_control() {
+  [ -f "$control_dir/temperatures.txt" ] || set_temps -23.5 -21.25 21.0
+  [ -f "$control_dir/wifi.txt" ] || set_wifi on
+}
+
+cmd_server() {
+  ensure_tls
+  load_credentials
+  [ -d "$root/server/node_modules" ] || { echo "run ./dev setup first" >&2; exit 1; }
+  AUSTRAL_TLS_DIR="$tls_dir" AUSTRAL_HTTP_PORT="$http_port" exec node "$root/server/server.mjs"
+}
+
+cmd_ota() {
+  compile_firmware
+  [ -n "$(running_pid device)" ] || { echo "the emulated device is not running; ./dev up first" >&2; exit 1; }
+  (cd "$firmware_dir" && "$esphome" upload emulator.yaml --device 127.0.0.1 > "$firmware_dir/upload.log" 2>&1) || {
+    tail -20 "$firmware_dir/upload.log" >&2
+    exit 1
+  }
+  echo "OTA update sent; the device reboots into the new firmware"
+}
+
+cmd_emulate() {
+  [ -x "$qemu" ] || { echo "run ./dev setup first" >&2; exit 1; }
+  [ -f "$flash" ] || { echo "run ./dev build first" >&2; exit 1; }
+  if [ -n "$(running_pid device)" ] && [ "$(running_pid device)" != "$$" ]; then
+    echo "the emulated device is already running" >&2
+    exit 1
+  fi
+  mkdir -p "$run_dir"
+  echo $$ > "$run_dir/device.pid"
+  ensure_control
+  ESP32_ONEWIRE_PIN=4 \
+  ESP32_ONEWIRE_FILE="$control_dir/temperatures.txt" \
+  ESP32_WIFI_STATE_FILE="$control_dir/wifi.txt" \
+  exec "$qemu" -nographic -machine esp32-picsimlab \
+    -icount shift=3,align=off,sleep=on \
+    -drive "file=$flash,if=mtd,format=raw" \
+    -global driver=timer.esp32.timg,property=wdt_disable,value=true \
+    -nic "user,model=esp32_wifi,net=192.168.4.0/24,hostfwd=tcp:127.0.0.1:$device_web_port-192.168.4.15:80,hostfwd=tcp:127.0.0.1:3232-192.168.4.15:3232"
+}
+
+running_pid() {
+  local pid_file="$run_dir/$1.pid" pid
+  [ -f "$pid_file" ] || return 0
+  pid="$(cat "$pid_file")"
+  if ps -p "$pid" -o command= 2> /dev/null | grep -q -F "$root"; then
+    echo "$pid"
+  else
+    rm -f "$pid_file"
+  fi
+}
+
+start_background() {
+  local name="$1"
+  shift
+  if [ -n "$(running_pid "$name")" ]; then
+    echo "$name already running"
+    return
+  fi
+  mkdir -p "$run_dir"
+  nohup "$@" < /dev/null > "$run_dir/$name.log" 2>&1 &
+  echo $! > "$run_dir/$name.pid"
+  sleep 1
+  [ -n "$(running_pid "$name")" ] || { echo "$name exited; see $run_dir/$name.log" >&2; tail -5 "$run_dir/$name.log" >&2; exit 1; }
+}
+
+cmd_up() {
+  start_background server "$0" server
+  start_background device "$0" emulate
+  echo "chart:      http://127.0.0.1:$http_port"
+  echo "device web: http://127.0.0.1:$device_web_port"
+  echo "serial log: $run_dir/device.log"
+}
+
+cmd_down() {
+  local name pid
+  for name in device server; do
+    pid="$(running_pid "$name")"
+    [ -n "$pid" ] || continue
+    kill "$pid" 2> /dev/null || true
+    for _ in $(seq 50); do
+      kill -0 "$pid" 2> /dev/null || break
+      sleep 0.1
+    done
+    kill -9 "$pid" 2> /dev/null || true
+    rm -f "$run_dir/$name.pid"
+  done
+}
+
+cmd_scenario() {
+  local script="$root/scenarios/${1:-}.sh"
+  [ -f "$script" ] || { echo "unknown scenario; see scenarios/" >&2; exit 1; }
+  DEV="$0" exec bash "$script"
+}
+
+command="${1:-}"
+[ $# -gt 0 ] && shift
+case "$command" in
+  setup) cmd_setup ;;
+  build) cmd_build ;;
+  ota) cmd_ota ;;
+  up) cmd_up ;;
+  down) cmd_down ;;
+  server) cmd_server ;;
+  emulate) cmd_emulate ;;
+  temps) [ $# -eq 3 ] || { usage; exit 1; }; set_temps "$@" ;;
+  wifi) [ $# -eq 1 ] || { usage; exit 1; }; set_wifi "$1" ;;
+  scenario) cmd_scenario "$@" ;;
+  test) exec node "$root/test/e2e.mjs" ;;
+  logs) exec tail -f "$run_dir/device.log" ;;
+  *) usage; [ -z "$command" ] || exit 1 ;;
+esac

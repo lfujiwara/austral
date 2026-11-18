@@ -1,0 +1,10 @@
+{
+  "name": "austral-device-server",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20.11" },
+  "scripts": { "start": "node server.mjs" },
+  "dependencies": {
+    "aedes": "1.2.0"
+  }
+}

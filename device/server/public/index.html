@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Austral device</title>
+  <style>
+    @font-face { font-family: Manrope; src: url('/manrope.woff2') format('woff2'); font-weight: 400 800; font-display: swap; }
+    :root {
+      color-scheme: light;
+      --ink: #163f35; --paper: #f5f8f3; --muted: #4f685e; --accent: #d7f39b; --line: #cedbd0;
+      --chat: #edf3e8; --focus: #668f31; --white: #ffffff; --warn: #9a3b1d;
+      --product: #163f35; --air: #668f31; --ambient: #4f685e;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.6 Manrope, sans-serif;
+      font-synthesis: none; }
+    main { width: min(1100px, calc(100% - 48px)); margin: 0 auto 48px; display: grid;
+      grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    a { color: inherit; text-underline-offset: 4px; }
+    :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+    ::selection { background: var(--accent); }
+    header { display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: center; justify-content: space-between;
+      padding: 28px 0 8px; }
+    .brand { margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -1px; }
+    .brand span { color: #67923b; }
+    .brand small { font-size: 14px; font-weight: 700; letter-spacing: 0; color: var(--muted); margin-left: 6px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; }
+    .controls label { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--muted); }
+    select { font: inherit; font-size: 13px; font-weight: 700; color: var(--ink); background: var(--white);
+      border: 1px solid var(--line); border-radius: 50px; padding: 8px 14px; }
+    .panel { background: var(--white); border: 1px solid var(--line); border-radius: 24px; padding: 22px 24px; }
+    h2 { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 4px; }
+    .note, .empty { color: var(--muted); font-size: 13px; }
+    .note { margin: 0 0 14px; }
+    code { font-family: ui-monospace, monospace; font-size: 12px; background: var(--chat); padding: 2px 6px; border-radius: 6px; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 18px 24px; }
+    .stat span { display: block; font-size: 12px; font-weight: 700; color: var(--muted); }
+    .stat strong { display: block; font-size: 24px; font-weight: 700; letter-spacing: -0.02em;
+      font-variant-numeric: tabular-nums; }
+    .stat strong.online { display: inline-block; background: var(--accent); border-radius: 50px; padding: 2px 12px;
+      font-size: 16px; margin-top: 4px; }
+    .stat strong.offline, .stat strong.alarm { display: inline-block; background: var(--warn); color: var(--white);
+      border-radius: 50px; padding: 2px 12px; font-size: 16px; margin-top: 4px; }
+    canvas { width: 100%; height: 320px; display: block; margin-top: 6px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 10px; font-size: 12px; font-weight: 700;
+      color: var(--muted); }
+    .legend i { display: inline-block; width: 18px; height: 0; border-top: 3px solid; margin-right: 8px;
+      vertical-align: middle; }
+    .table { overflow-x: auto; }
+    table { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; font-size: 12px; font-weight: 700; color: var(--muted); padding: 0 12px 8px 0; }
+    td { padding: 9px 12px 9px 0; border-top: 1px solid var(--line); vertical-align: top; }
+    td.payload { font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; }
+    td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .verdict { display: inline-block; font-size: 12px; font-weight: 700; border-radius: 50px; padding: 1px 10px;
+      white-space: nowrap; }
+    .verdict.ok { background: var(--accent); }
+    .verdict.mismatch { background: var(--warn); color: var(--white); }
+    .verdict.unknown { border: 1px solid var(--muted); color: var(--muted); }
+    @media (max-width: 700px) {
+      main { width: calc(100% - 32px); }
+      header { padding-top: 20px; }
+      .panel { padding: 18px; border-radius: 20px; }
+      canvas { height: 240px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1 class="brand">austral<span>.</span><small>device</small></h1>
+      <div class="controls">
+        <label>Device <select id="device"></select></label>
+        <label>Window <select id="window">
+          <option value="600000">10 min</option>
+          <option value="3600000" selected>1 h</option>
+          <option value="43200000">12 h</option>
+        </select></label>
+      </div>
+    </header>
+    <section class="panel stats" id="stats" aria-live="polite"><p class="empty">Waiting for MQTT messages.</p></section>
+    <section class="panel">
+      <h2>Temperatures</h2>
+      <canvas id="chart" role="img" aria-label="Product, air and ambient temperature over time"></canvas>
+      <div class="legend" id="legend"></div>
+    </section>
+    <section class="panel">
+      <h2>MQTT messages</h2>
+      <p class="note">Last raw payload per topic under <code>austral/&lt;device&gt;/</code>, checked against <a href="/api/schema">the schema</a>.</p>
+      <div class="table">
+        <table>
+          <thead><tr><th>Topic</th><th>Last payload</th><th>Count</th><th>Received</th><th>Schema</th></tr></thead>
+          <tbody id="messages"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

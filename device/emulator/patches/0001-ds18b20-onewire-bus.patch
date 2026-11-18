@@ -1,0 +1,475 @@
+diff --git a/hw/gpio/esp32_gpio.c b/hw/gpio/esp32_gpio.c
+index 0af590e77e..028bb1a1b3 100644
+--- a/hw/gpio/esp32_gpio.c
++++ b/hw/gpio/esp32_gpio.c
+@@ -20,6 +20,7 @@
+ #include "hw/irq.h"
+ #include "hw/qdev-properties.h"
+ #include "hw/gpio/esp32_gpio.h"
++#include "hw/gpio/esp32_onewire.h"
+ #include "sysemu/runstate.h"
+ 
+ 
+@@ -40,6 +41,10 @@ static uint64_t esp32_gpio_read(void *opaque, hwaddr addr, unsigned int size)
+         case 0x3C: //GPIO_IN_REG
+             qemu_set_irq(s->gpios_sync[0], -1); //request sync
+             r = s->gpio_in;
++            if (esp32_onewire_pin() >= 0 && esp32_onewire_pin() < 32) {
++                int pin = esp32_onewire_pin();
++                r = (r & ~(1u << pin)) | ((uint32_t)esp32_onewire_level() << pin);
++            }
+             break;
+         case 0x40: //GPIO_IN1_REG 
+             qemu_set_irq(s->gpios_sync[0], -1); //request sync
+@@ -227,7 +232,10 @@ static void esp32_gpio_write(void *opaque, hwaddr addr, uint64_t value,
+         qemu_set_irq(s->gpios_sync[0], (0x2000 | n)); ////report out sel cfg change
+     }
+ 
+-    //printf("out 0x%04X in 0x%04X enable 0x%04X \n"  ,s->gpio_out, s->gpio_in, s->gpio_enable);
++    if (esp32_onewire_pin() >= 0 && esp32_onewire_pin() < 32) {
++        int pin = esp32_onewire_pin();
++        esp32_onewire_drive(((s->gpio_enable >> pin) & 1) && !((s->gpio_out >> pin) & 1));
++    }
+ 
+     if ((s->gpio_out != oldvalue)||(s->gpio_enable != oldenable)) {
+         uint32_t diff = (s->gpio_out ^ oldvalue) | (s->gpio_enable ^ oldenable);
+@@ -285,6 +293,7 @@ static void esp32_gpio_init(Object *obj)
+     qdev_init_gpio_in_named(DEVICE(s), set_gpio, ESP32_GPIOS_IN, 40);
+     s->gpio_in = 0x1;
+     s->gpio_in1 = 0x8;
++    esp32_onewire_init();
+ }
+ 
+ static Property esp32_gpio_properties[] = {
+diff --git a/hw/gpio/esp32_onewire.c b/hw/gpio/esp32_onewire.c
+new file mode 100644
+index 0000000000..5b65f7de62
+--- /dev/null
++++ b/hw/gpio/esp32_onewire.c
+@@ -0,0 +1,394 @@
++/*
++ * Slots are decoded from the width of each low pulse on QEMU's virtual clock,
++ * the same clock behind the guest's CCOUNT busy waits. Run QEMU with -icount so
++ * host scheduling cannot stretch the microsecond pulses.
++ *
++ * This program is free software; you can redistribute it and/or modify it under
++ * the terms of the GNU General Public License version 2 or (at your option) any
++ * later version.
++ */
++
++#include "qemu/osdep.h"
++#include "qemu/timer.h"
++#include "hw/gpio/esp32_onewire.h"
++#include <math.h>
++
++#define MAX_SENSORS 8
++#define US 1000LL
++#define RESET_MIN_NS (400 * US)
++#define WRITE_ONE_MAX_NS (30 * US)
++#define PRESENCE_START_NS (15 * US)
++#define PRESENCE_END_NS (300 * US)
++#define READ_ZERO_HOLD_NS (90 * US)
++
++typedef enum {
++    PHASE_IDLE,
++    PHASE_ROM_COMMAND,
++    PHASE_MATCH_ROM,
++    PHASE_SEARCH_ROM,
++    PHASE_FUNCTION_COMMAND,
++    PHASE_TRANSMIT,
++    PHASE_RECEIVE_SCRATCHPAD,
++    PHASE_TRANSMIT_ONES,
++} Phase;
++
++typedef struct {
++    uint64_t rom_code;
++    uint8_t rom[8];
++    uint8_t scratchpad[9];
++    bool present;
++    Phase phase;
++    uint8_t rx_byte;
++    int rx_bits;
++    int rom_bit;
++    int search_step;
++    bool rom_matches;
++    bool transmits_this_slot;
++    uint8_t tx[9];
++    int tx_len;
++    int tx_pos;
++    uint8_t rx[3];
++    int rx_len;
++} Sensor;
++
++static struct {
++    int pin;
++    char *path;
++    bool guest_low;
++    int64_t low_since;
++    int64_t sensor_low_from;
++    int64_t sensor_low_until;
++    int count;
++    Sensor sensors[MAX_SENSORS];
++} bus = { .pin = -1 };
++
++static uint8_t crc8(const uint8_t *data, int len)
++{
++    uint8_t crc = 0;
++    while (len--) {
++        uint8_t byte = *data++;
++        for (int i = 0; i < 8; i++) {
++            bool mix = (crc ^ byte) & 1;
++            crc >>= 1;
++            if (mix) {
++                crc ^= 0x8C;
++            }
++            byte >>= 1;
++        }
++    }
++    return crc;
++}
++
++static void store_temperature(Sensor *s, double celsius)
++{
++    int resolution = 9 + ((s->scratchpad[4] >> 5) & 3);
++    int16_t raw = (int16_t)lround(celsius * 16.0);
++    raw &= (int16_t)~((1 << (12 - resolution)) - 1);
++    s->scratchpad[0] = raw & 0xff;
++    s->scratchpad[1] = (raw >> 8) & 0xff;
++    s->scratchpad[5] = 0xff;
++    s->scratchpad[6] = 0x10 - (raw & 0x0f);
++    s->scratchpad[7] = 0x10;
++    s->scratchpad[8] = crc8(s->scratchpad, 8);
++}
++
++static Sensor *sensor_for(uint64_t rom_code)
++{
++    for (int i = 0; i < bus.count; i++) {
++        if (bus.sensors[i].rom_code == rom_code) {
++            return &bus.sensors[i];
++        }
++    }
++    if (bus.count == MAX_SENSORS) {
++        return NULL;
++    }
++    Sensor *s = &bus.sensors[bus.count++];
++    memset(s, 0, sizeof(*s));
++    s->rom_code = rom_code;
++    for (int i = 0; i < 8; i++) {
++        s->rom[i] = (rom_code >> (8 * i)) & 0xff;
++    }
++    s->scratchpad[2] = 0x4b;
++    s->scratchpad[3] = 0x46;
++    s->scratchpad[4] = 0x7f;
++    store_temperature(s, 85.0);
++    /* Power-on value. ESPHome tells it apart from a real 85 °C reading by this byte. */
++    s->scratchpad[6] = 0x0c;
++    s->scratchpad[8] = crc8(s->scratchpad, 8);
++    return s;
++}
++
++static void visit_control_file(void (*visit)(Sensor *s, double celsius, Sensor *converting),
++                               Sensor *converting)
++{
++    gchar *text = NULL;
++    if (!g_file_get_contents(bus.path, &text, NULL, NULL)) {
++        return;
++    }
++    gchar **lines = g_strsplit(text, "\n", -1);
++    for (gchar **line = lines; *line; line++) {
++        unsigned long long rom_code;
++        double celsius;
++        if (sscanf(*line, "%llx %lf", &rom_code, &celsius) != 2) {
++            continue;
++        }
++        Sensor *s = sensor_for(rom_code);
++        if (s) {
++            visit(s, celsius, converting);
++        }
++    }
++    g_strfreev(lines);
++    g_free(text);
++}
++
++static void mark_present(Sensor *s, double celsius, Sensor *converting)
++{
++    s->present = true;
++}
++
++static void latch_reading(Sensor *s, double celsius, Sensor *converting)
++{
++    if (s == converting && isfinite(celsius) && celsius >= -55.0 && celsius <= 125.0) {
++        store_temperature(s, celsius);
++    }
++}
++
++static void refresh_presence(void)
++{
++    for (int i = 0; i < bus.count; i++) {
++        bus.sensors[i].present = false;
++    }
++    visit_control_file(mark_present, NULL);
++}
++
++static void convert_temperature(Sensor *s)
++{
++    visit_control_file(latch_reading, s);
++}
++
++static void transmit(Sensor *s, const uint8_t *bytes, int len)
++{
++    memcpy(s->tx, bytes, len);
++    s->tx_len = len * 8;
++    s->tx_pos = 0;
++    s->phase = PHASE_TRANSMIT;
++}
++
++static int rom_bit(Sensor *s)
++{
++    return (s->rom[s->rom_bit / 8] >> (s->rom_bit % 8)) & 1;
++}
++
++static void rom_command(Sensor *s, uint8_t command)
++{
++    switch (command) {
++    case 0x33: /* READ ROM */
++        transmit(s, s->rom, 8);
++        break;
++    case 0x55: /* MATCH ROM */
++        s->phase = PHASE_MATCH_ROM;
++        s->rom_bit = 0;
++        s->rom_matches = true;
++        break;
++    case 0xCC: /* SKIP ROM */
++    case 0xA5: /* RESUME */
++        s->phase = PHASE_FUNCTION_COMMAND;
++        break;
++    case 0xF0: /* SEARCH ROM */
++        s->phase = PHASE_SEARCH_ROM;
++        s->rom_bit = 0;
++        s->search_step = 0;
++        break;
++    case 0xEC: /* ALARM SEARCH: no emulated sensor has an alarm condition */
++        s->phase = PHASE_IDLE;
++        break;
++    default:
++        s->phase = PHASE_IDLE;
++        break;
++    }
++}
++
++static void function_command(Sensor *s, uint8_t command)
++{
++    switch (command) {
++    case 0x44: /* CONVERT T */
++        convert_temperature(s);
++        s->phase = PHASE_TRANSMIT_ONES;
++        break;
++    case 0xBE: /* READ SCRATCHPAD */
++        transmit(s, s->scratchpad, 9);
++        break;
++    case 0x4E: /* WRITE SCRATCHPAD */
++        s->phase = PHASE_RECEIVE_SCRATCHPAD;
++        s->rx_len = 0;
++        break;
++    case 0x48: /* COPY SCRATCHPAD */
++    case 0xB8: /* RECALL E2 */
++    case 0xB4: /* READ POWER SUPPLY */
++        s->phase = PHASE_TRANSMIT_ONES;
++        break;
++    default:
++        s->phase = PHASE_IDLE;
++        break;
++    }
++}
++
++static void receive_bit(Sensor *s, int bit)
++{
++    if (s->phase == PHASE_MATCH_ROM) {
++        s->rom_matches &= rom_bit(s) == bit;
++        if (++s->rom_bit == 64) {
++            s->phase = s->rom_matches ? PHASE_FUNCTION_COMMAND : PHASE_IDLE;
++        }
++        return;
++    }
++    if (s->phase == PHASE_SEARCH_ROM) {
++        if (rom_bit(s) != bit) {
++            s->phase = PHASE_IDLE;
++            return;
++        }
++        s->search_step = 0;
++        if (++s->rom_bit == 64) {
++            s->phase = PHASE_FUNCTION_COMMAND;
++        }
++        return;
++    }
++    s->rx_byte |= bit << s->rx_bits;
++    if (++s->rx_bits < 8) {
++        return;
++    }
++    uint8_t byte = s->rx_byte;
++    s->rx_byte = 0;
++    s->rx_bits = 0;
++    switch (s->phase) {
++    case PHASE_ROM_COMMAND:
++        rom_command(s, byte);
++        break;
++    case PHASE_FUNCTION_COMMAND:
++        function_command(s, byte);
++        break;
++    case PHASE_RECEIVE_SCRATCHPAD:
++        s->rx[s->rx_len++] = byte;
++        if (s->rx_len == 3) {
++            s->scratchpad[2] = s->rx[0];
++            s->scratchpad[3] = s->rx[1];
++            s->scratchpad[4] = (s->rx[2] & 0x60) | 0x1f;
++            s->scratchpad[8] = crc8(s->scratchpad, 8);
++            s->phase = PHASE_TRANSMIT_ONES;
++        }
++        break;
++    default:
++        break;
++    }
++}
++
++static int next_transmit_bit(Sensor *s)
++{
++    switch (s->phase) {
++    case PHASE_TRANSMIT: {
++        int bit = (s->tx[s->tx_pos / 8] >> (s->tx_pos % 8)) & 1;
++        if (++s->tx_pos == s->tx_len) {
++            s->phase = PHASE_TRANSMIT_ONES;
++        }
++        return bit;
++    }
++    case PHASE_TRANSMIT_ONES:
++        return 1;
++    case PHASE_SEARCH_ROM:
++        /* Each search step sends the ROM bit, then its complement, then listens. */
++        if (s->search_step < 2) {
++            return s->search_step++ == 0 ? rom_bit(s) : !rom_bit(s);
++        }
++        return -1;
++    default:
++        return -1;
++    }
++}
++
++static bool listening(Sensor *s)
++{
++    return s->present && !s->transmits_this_slot && s->phase != PHASE_IDLE &&
++           s->phase != PHASE_TRANSMIT_ONES;
++}
++
++static void slot_start(int64_t now)
++{
++    bus.low_since = now;
++    bus.sensor_low_until = 0;
++    for (int i = 0; i < bus.count; i++) {
++        Sensor *s = &bus.sensors[i];
++        int bit = s->present ? next_transmit_bit(s) : -1;
++        s->transmits_this_slot = bit >= 0;
++        if (bit == 0) {
++            bus.sensor_low_from = now;
++            bus.sensor_low_until = now + READ_ZERO_HOLD_NS;
++        }
++    }
++}
++
++static void slot_end(int64_t now)
++{
++    int64_t width = now - bus.low_since;
++    if (width >= RESET_MIN_NS) {
++        refresh_presence();
++        bool any = false;
++        for (int i = 0; i < bus.count; i++) {
++            Sensor *s = &bus.sensors[i];
++            s->phase = s->present ? PHASE_ROM_COMMAND : PHASE_IDLE;
++            s->rx_byte = 0;
++            s->rx_bits = 0;
++            any |= s->present;
++        }
++        if (any) {
++            bus.sensor_low_from = now + PRESENCE_START_NS;
++            bus.sensor_low_until = now + PRESENCE_END_NS;
++        }
++        return;
++    }
++    int bit = width < WRITE_ONE_MAX_NS;
++    for (int i = 0; i < bus.count; i++) {
++        if (listening(&bus.sensors[i])) {
++            receive_bit(&bus.sensors[i], bit);
++        }
++    }
++}
++
++void esp32_onewire_drive(bool low)
++{
++    if (bus.pin < 0 || low == bus.guest_low) {
++        return;
++    }
++    bus.guest_low = low;
++    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++    if (low) {
++        slot_start(now);
++    } else {
++        slot_end(now);
++    }
++}
++
++int esp32_onewire_level(void)
++{
++    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++    if (bus.guest_low) {
++        return 0;
++    }
++    return !(now >= bus.sensor_low_from && now < bus.sensor_low_until);
++}
++
++int esp32_onewire_pin(void)
++{
++    return bus.pin;
++}
++
++void esp32_onewire_init(void)
++{
++    const char *pin = getenv("ESP32_ONEWIRE_PIN");
++    const char *path = getenv("ESP32_ONEWIRE_FILE");
++    if (!pin || !path || bus.pin >= 0) {
++        return;
++    }
++    bus.pin = atoi(pin);
++    bus.path = g_strdup(path);
++    refresh_presence();
++}
+diff --git a/hw/gpio/meson.build b/hw/gpio/meson.build
+index 6d53d8ae19..990d1cedf5 100644
+--- a/hw/gpio/meson.build
++++ b/hw/gpio/meson.build
+@@ -17,7 +17,7 @@ system_ss.add(when: 'CONFIG_RASPI', if_true: files(
+ system_ss.add(when: 'CONFIG_STM32L4X5_SOC', if_true: files('stm32l4x5_gpio.c'))
+ system_ss.add(when: 'CONFIG_ASPEED_SOC', if_true: files('aspeed_gpio.c'))
+ system_ss.add(when: 'CONFIG_SIFIVE_GPIO', if_true: files('sifive_gpio.c'))
+-system_ss.add(when: 'CONFIG_XTENSA_ESP32', if_true: files('esp32_gpio.c'))
+-system_ss.add(when: 'CONFIG_RISCV_ESP32C3', if_true: files('esp32_gpio.c', 'esp32c3_gpio.c'))
+-system_ss.add(when: 'CONFIG_XTENSA_ESP32S3', if_true: files('esp32_gpio.c', 'esp32s3_gpio.c'))
++system_ss.add(when: 'CONFIG_XTENSA_ESP32', if_true: files('esp32_gpio.c', 'esp32_onewire.c'))
++system_ss.add(when: 'CONFIG_RISCV_ESP32C3', if_true: files('esp32_gpio.c', 'esp32_onewire.c', 'esp32c3_gpio.c'))
++system_ss.add(when: 'CONFIG_XTENSA_ESP32S3', if_true: files('esp32_gpio.c', 'esp32_onewire.c', 'esp32s3_gpio.c'))
+ system_ss.add(when: 'CONFIG_PCF8574', if_true: files('pcf8574.c'))
+diff --git a/include/hw/gpio/esp32_onewire.h b/include/hw/gpio/esp32_onewire.h
+new file mode 100644
+index 0000000000..6b692ca1ef
+--- /dev/null
++++ b/include/hw/gpio/esp32_onewire.h
+@@ -0,0 +1,11 @@
++#pragma once
++
++#include <stdbool.h>
++#include <stdint.h>
++
++void esp32_onewire_init(void);
++int esp32_onewire_pin(void);
++/* The guest drives the pin low (output enabled, level 0) or releases it. */
++void esp32_onewire_drive(bool low);
++/* Bus level the guest reads: 0 when the guest or any sensor pulls it low. */
++int esp32_onewire_level(void);
