@@ -176,10 +176,10 @@ ensure_control() {
 }
 
 cmd_server() {
-  ensure_tls
+  mkdir -p "$local_dir"
   load_credentials
-  [ -d "$root/server/node_modules" ] || { echo "run ./dev setup first" >&2; exit 1; }
-  AUSTRAL_TLS_DIR="$tls_dir" AUSTRAL_HTTP_PORT="$http_port" exec node "$root/server/server.mjs"
+  AUSTRAL_DB_PATH="$local_dir/austral.sqlite" AUSTRAL_DEVICE_TOKENS="austral-device:$AUSTRAL_MQTT_PASSWORD" \
+    AUSTRAL_HTTP_PORT="$http_port" exec node "$root/server/server.mjs"
 }
 
 cmd_ota() {
