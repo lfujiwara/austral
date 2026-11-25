@@ -5,7 +5,7 @@ Firmware do dispositivo Austral e um ambiente de desenvolvimento virtual. O ambi
 ## O que tem aqui
 
 - `firmware/device.yaml`: firmware em ESPHome para ESP32.
-- `schema/entities.json`: formato de cada tópico MQTT que o firmware publica ou aceita, com padrão do valor e unidade.
+- `schema/entities.json`: formato de cada entidade que o firmware envia, com padrão do valor e unidade.
 - `schema/api.md`: contrato da API do servidor.
 - `emulator/`: script que compila o QEMU com Wi-Fi para ESP32 e os patches deste repositório.
 - `server/`: servidor HTTP com banco SQLite. Recebe lotes de leituras, guarda o histórico e serve a página de monitoramento.
@@ -18,17 +18,19 @@ Firmware do dispositivo Austral e um ambiente de desenvolvimento virtual. O ambi
 
 O firmware lê três sensores DS18B20 num barramento 1-Wire no GPIO4: produto, ar e ambiente. Lê a cada 10 segundos, com resolução de 12 bits. O intervalo vai de 5 a 300 segundos e fica salvo na flash.
 
-As leituras saem por MQTT com TLS na porta 8883. A seção "Formato dos dados" descreve os tópicos.
+O firmware junta cada mudança de valor numa fila na memória e envia um lote por `POST /ingest` a cada 5 segundos, com o token do dispositivo. A fila guarda até 512 itens. Um lote sem resposta é reenviado com o mesmo número, e o servidor descarta a repetição. Uma URL `https` é validada com o pacote de CAs públicas do ESP-IDF. O formato do lote está em `schema/api.md`, e o código da fila em `firmware/ingest.h`.
 
-O alarme local liga o buzzer no GPIO25 quando o produto fica acima de -12 °C por 10 minutos. Desliga 1 minuto depois de voltar. Funciona sem Wi-Fi e sem MQTT.
+A página web do dispositivo mostra "Ingest last status", o código HTTP da última resposta (`-1` sem resposta), e "Ingest queued", o tamanho da fila.
+
+O alarme local liga o buzzer no GPIO25 quando o produto fica acima de -12 °C por 10 minutos. Desliga 1 minuto depois de voltar. Funciona sem Wi-Fi e sem servidor.
 
 O sensor ultrassônico HC-SR04 mede a distância até a porta. O Trig fica no GPIO26 e o Echo no GPIO27, por um divisor de 1 kΩ e 2 kΩ. O sensor mede a cada 100 ms e o dispositivo publica a mediana de cada segundo, em metros. Sem eco, o valor é `nan`.
 
-Para calibrar, feche a porta e aperte "Calibrate door" na página web do dispositivo, ou envie `PRESS` por MQTT. O dispositivo mede por 3 segundos, calcula a mediana das leituras válidas e grava o resultado em "Door closed distance". Com menos de 5 leituras válidas, mantém o valor antigo e registra um aviso no log. Esse valor também aceita ajuste manual e fica salvo na flash. O valor 0 significa sem calibração.
+Para calibrar, feche a porta e aperte "Calibrate door" na página web do dispositivo. O dispositivo mede por 3 segundos, calcula a mediana das leituras válidas e grava o resultado em "Door closed distance". Com menos de 5 leituras válidas, mantém o valor antigo e registra um aviso no log. Esse valor também aceita ajuste manual e fica salvo na flash. O valor 0 significa sem calibração.
 
 "Door open" fica `ON` quando a distância passa de "Door closed distance" mais 0,05 m por 2 segundos. Um eco ausente conta como porta aberta. Volta a `OFF` depois de 1 segundo. Sem calibração, ele não publica estado. A margem é a substituição `door_margin` em `firmware/device.yaml`.
 
-O display OLED SSD1306 de 128x32 mostra as temperaturas, o alarme e o estado do Wi-Fi e do MQTT. O endereço do broker pode mudar pelo servidor web do dispositivo ou por MQTT. O novo endereço fica salvo na flash.
+O display OLED SSD1306 de 128x32 mostra as temperaturas, o alarme, o estado do Wi-Fi e se o último lote foi aceito.
 
 Para gravar numa placa real, copie `firmware/example.secrets.yaml` para `firmware/secrets.yaml` e preencha. Os códigos ROM dos sensores aparecem no log do primeiro boot.
 
@@ -36,30 +38,25 @@ Para gravar numa placa real, copie `firmware/example.secrets.yaml` para `firmwar
 
 O arquivo `schema/entities.json` é a referência. Ele lista cada tópico com o padrão do payload, a unidade e a frequência. O servidor usa esse arquivo para conferir cada item de um lote de ingestão: o id vem do tópico sem o `/state` final.
 
-Os tópicos do dispositivo começam com `austral/<dispositivo>/`. O payload é texto puro, sem JSON. Essas mensagens saem com QoS 0 e `retain`. Quem assina recebe na hora o último valor de cada tópico.
+Cada item do lote leva o id da entidade, a idade da leitura em milissegundos e o valor como texto.
 
-| Tópico | Payload | Unidade | Frequência |
+| Id | Valor | Unidade | Frequência |
 | --- | --- | --- | --- |
-| `status` | `online` ou `offline` | | na conexão e na queda |
-| `sensor/product_temperature/state` | número com uma casa, ou `nan` | °C | 10 s |
-| `sensor/air_temperature/state` | número com uma casa, ou `nan` | °C | 10 s |
-| `sensor/ambient_temperature/state` | número com uma casa, ou `nan` | °C | 10 s |
-| `sensor/door_distance/state` | número com três casas, ou `nan` | m | 1 s |
-| `sensor/wifi_signal/state` | inteiro | dBm | 60 s |
-| `sensor/uptime/state` | inteiro | s | 60 s |
-| `binary_sensor/local_temperature_alarm/state` | `ON` ou `OFF` | | quando muda |
-| `binary_sensor/door_open/state` | `ON` ou `OFF` | | quando muda |
-| `number/door_closed_distance/state` | número | m | quando muda |
-| `switch/buzzer/state` | `ON` ou `OFF` | | quando muda |
-| `text/mqtt_broker/state` | endereço do broker | | quando muda |
-| `number/read_interval/state` | número | s | quando muda |
-| `debug` | linha de log do dispositivo | | a cada log |
+| `sensor/product_temperature` | número com uma casa, ou `nan` | °C | 10 s |
+| `sensor/air_temperature` | número com uma casa, ou `nan` | °C | 10 s |
+| `sensor/ambient_temperature` | número com uma casa, ou `nan` | °C | 10 s |
+| `sensor/door_distance` | número com três casas, ou `nan` | m | 1 s |
+| `sensor/wifi_signal` | inteiro | dBm | 60 s |
+| `sensor/uptime` | inteiro | s | 60 s |
+| `binary_sensor/local_temperature_alarm` | `ON` ou `OFF` | | quando muda |
+| `binary_sensor/door_open` | `ON` ou `OFF` | | quando muda |
+| `number/door_closed_distance` | número com três casas | m | quando muda |
+| `number/read_interval` | número com uma casa | s | quando muda |
+| `switch/buzzer` | `ON` ou `OFF` | | quando muda |
 
-`nan` indica um sensor que não respondeu. `binary_sensor/door_open/state` só aparece depois da calibração. O broker publica `offline` em nome do dispositivo quando perde a conexão com ele.
+`nan` indica um sensor que não respondeu. `binary_sensor/door_open` só aparece depois da calibração.
 
-O ESPHome também publica `esphome/discover/<dispositivo>` a cada conexão, com `retain`. O payload é um JSON com os endereços IP, o MAC, a versão do ESPHome e a placa. Esse tópico fica fora do prefixo e o servidor não confere o formato dele.
-
-O dispositivo aceita cinco comandos: `switch/buzzer/command` (`ON`, `OFF` ou `TOGGLE`), `text/mqtt_broker/command` (novo endereço), `number/read_interval/command` (segundos), `button/calibrate_door/command` (`PRESS`) e `number/door_closed_distance/command` (metros).
+O servidor não manda comandos ao dispositivo. O buzzer, o intervalo de leitura, a calibração e a distância da porta fechada mudam pela página web do dispositivo, na rede local.
 
 ## Servidor
 
@@ -138,7 +135,7 @@ O QEMU e os patches em `emulator/patches` seguem a GPL-2.0. O restante deste dir
 
 ## Limites
 
-O firmware ainda publica por MQTT e o servidor não tem mais broker. Até o firmware enviar lotes para `POST /ingest`, o ambiente virtual não entrega leituras ao servidor, e `./dev test` não roda.
+O ambiente virtual ainda não foi adaptado aos lotes HTTP. O `./dev build` e o `./dev test` não rodam até essa adaptação.
 
 
 O ambiente virtual não emula o display OLED nem o HC-SR04. Lá, `door_distance` fica em `nan` e a calibração falha por falta de leituras. O sinal do Wi-Fi é sorteado pelo emulador e não reflete distância nem obstáculos. As redes virtuais não têm senha. Ruído elétrico e falhas de alimentação não são simulados. Algumas leituras falham no 1-Wire emulado e chegam como `nan`, com mais frequência logo depois do boot.

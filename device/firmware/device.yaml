@@ -3,11 +3,14 @@ substitutions:
   alarm_threshold: "-12.0"
   # Meters above the closed-door baseline before the door counts as open.
   door_margin: "0.05"
-  default_broker: !secret mqtt_broker
+  ingest_url: !secret ingest_url
+  ingest_token: !secret ingest_token
 
 esphome:
   name: ${device_name}
   friendly_name: Austral Device
+  includes:
+    - ingest.h
   on_boot:
     priority: -100
     then:
@@ -17,11 +20,7 @@ esphome:
             s->set_update_interval((uint32_t) id(read_interval).state * 1000);
             s->start_poller();
           }
-          if (id(mqtt_broker).state.size() >= 3 && id(mqtt_broker).state != "${default_broker}") {
-            id(mqtt_client)->set_broker_address(id(mqtt_broker).state);
-            id(mqtt_client)->disable();
-            id(mqtt_client)->enable();
-          }
+          austral::boot = esphome::random_uint32();
 
 esp32:
   board: esp32dev
@@ -51,19 +50,19 @@ ota:
   - platform: esphome
     password: !secret ota_password
 
-time:
-  - platform: sntp
-    id: sntp_time
+# Readings leave in batches through POST /ingest (schema/api.md). An https URL is checked against the
+# public CA bundle, so the Cloudflare certificate needs nothing on the device.
+http_request:
+  timeout: 10s
 
-mqtt:
-  id: mqtt_client
-  broker: !secret mqtt_broker
-  port: 8883
-  certificate_authority: !secret mqtt_ca
-  username: !secret mqtt_username
-  password: !secret mqtt_password
-  topic_prefix: austral/${device_name}
-  discovery: false
+interval:
+  - interval: 5s
+    then:
+      - if:
+          condition:
+            wifi.connected:
+          then:
+            - script.execute: send_batch
 
 i2c:
   sda: GPIO21
@@ -84,7 +83,7 @@ display:
       auto t = [](sensor::Sensor *s) { return s->has_state() ? str_sprintf("%.1f", s->state) : std::string("--"); };
       it.printf(0, 0,  id(display_font), "Prod %s Air %s", t(id(product_temperature)).c_str(), t(id(air_temperature)).c_str());
       it.printf(0, 11, id(display_font), "Amb %s  %s", t(id(ambient_temperature)).c_str(), id(local_alarm).state ? "ALARM!" : "alarm ok");
-      it.printf(0, 22, id(display_font), "WiFi %s  MQTT %s", id(wifi_client).is_connected() ? "ok" : "--", id(mqtt_client)->is_connected() ? "ok" : "--");
+      it.printf(0, 22, id(display_font), "WiFi %s  Net %s", id(wifi_client).is_connected() ? "ok" : "--", austral::last_post_ok ? "ok" : "--");
 
 one_wire:
   - platform: gpio
@@ -99,6 +98,8 @@ sensor:
     id: product_temperature
     resolution: 12
     update_interval: 10s
+    on_value:
+      - lambda: 'austral::push("sensor/product_temperature", austral::number(x, 1));'
 
   - platform: dallas_temp
     one_wire_id: one_wire_bus
@@ -107,6 +108,8 @@ sensor:
     id: air_temperature
     resolution: 12
     update_interval: 10s
+    on_value:
+      - lambda: 'austral::push("sensor/air_temperature", austral::number(x, 1));'
 
   - platform: dallas_temp
     one_wire_id: one_wire_bus
@@ -115,14 +118,34 @@ sensor:
     id: ambient_temperature
     resolution: 12
     update_interval: 10s
+    on_value:
+      - lambda: 'austral::push("sensor/ambient_temperature", austral::number(x, 1));'
 
   - platform: wifi_signal
     name: "WiFi signal"
     update_interval: 60s
+    on_value:
+      - lambda: 'if (!std::isnan(x)) austral::push("sensor/wifi_signal", austral::number(x, 0));'
 
   - platform: uptime
     name: "Uptime"
     update_interval: 60s
+    on_value:
+      - lambda: 'austral::push("sensor/uptime", austral::number(x, 0));'
+
+  - platform: template
+    name: "Ingest last status"
+    entity_category: diagnostic
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: 'return austral::last_status;'
+
+  - platform: template
+    name: "Ingest queued"
+    entity_category: diagnostic
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: 'return austral::queued.size() + austral::in_flight.size();'
 
   # HC-SR04: Trig on GPIO26, Echo on GPIO27 through a 1k/2k divider.
   # Raw reads every 100 ms feed the calibration. Published once a second as the median of those 10 reads.
@@ -137,6 +160,8 @@ sensor:
       - median:
           window_size: 10
           send_every: 10
+    on_value:
+      - lambda: 'austral::push("sensor/door_distance", austral::number(x, 3));'
     on_raw_value:
       - lambda: |-
           if (id(calibrating) && !std::isnan(x) && x > 0) id(calibration_samples).push_back(x);
@@ -149,6 +174,28 @@ globals:
     type: std::vector<float>
 
 script:
+  - id: send_batch
+    mode: single
+    then:
+      - lambda: 'austral::take();'
+      - http_request.post:
+          url: ${ingest_url}
+          request_headers:
+            Authorization: "Bearer ${ingest_token}"
+            Content-Type: application/json
+          body: !lambda 'return austral::body("${device_name}");'
+          on_response:
+            then:
+              - lambda: |-
+                  if (response->status_code >= 300) ESP_LOGW("ingest", "Batch %u answered %d", (unsigned) austral::seq, response->status_code);
+                  austral::answered(response->status_code);
+          on_error:
+            then:
+              - lambda: |-
+                  ESP_LOGW("ingest", "Batch %u got no answer, resending", (unsigned) austral::seq);
+                  austral::last_post_ok = false;
+                  austral::last_status = -1;
+
   - id: calibrate_door
     mode: single
     then:
@@ -186,22 +233,10 @@ switch:
     output: buzzer_output
     name: "Buzzer"
     id: buzzer
-
-text:
-  - platform: template
-    name: "MQTT broker"
-    id: mqtt_broker
-    mode: text
-    optimistic: true
-    min_length: 3
-    max_length: 64
-    initial_value: !secret mqtt_broker
-    restore_value: true
-    set_action:
-      - lambda: |-
-          id(mqtt_client)->set_broker_address(x);
-          id(mqtt_client)->disable();
-          id(mqtt_client)->enable();
+    on_turn_on:
+      - lambda: 'austral::push("switch/buzzer", "ON");'
+    on_turn_off:
+      - lambda: 'austral::push("switch/buzzer", "OFF");'
 
 number:
   - platform: template
@@ -221,6 +256,8 @@ number:
             s->set_update_interval((uint32_t) x * 1000);
             s->start_poller();
           }
+    on_value:
+      - lambda: 'austral::push("number/read_interval", austral::number(x, 1));'
 
   - platform: template
     name: "Door closed distance"
@@ -233,6 +270,8 @@ number:
     initial_value: 0
     restore_value: true
     optimistic: true
+    on_value:
+      - lambda: 'austral::push("number/door_closed_distance", austral::number(x, 3));'
 
 binary_sensor:
   - platform: template
@@ -247,6 +286,8 @@ binary_sensor:
     filters:
       - delayed_on: 2s
       - delayed_off: 1s
+    on_state:
+      - lambda: 'austral::push("binary_sensor/door_open", austral::on_off(x));'
 
   - platform: template
     name: "Local temperature alarm"
@@ -256,6 +297,8 @@ binary_sensor:
     filters:
       - delayed_on: 10min
       - delayed_off: 1min
+    on_state:
+      - lambda: 'austral::push("binary_sensor/local_temperature_alarm", austral::on_off(x));'
     on_press:
       - switch.turn_on: buzzer
     on_release:
