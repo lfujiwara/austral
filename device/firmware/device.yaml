@@ -1,6 +1,8 @@
 substitutions:
   device_name: austral-device
   alarm_threshold: "-12.0"
+  # Meters above the closed-door baseline before the door counts as open.
+  door_margin: "0.05"
   default_broker: !secret mqtt_broker
 
 esphome:
@@ -26,6 +28,9 @@ esp32:
 
 logger:
   level: INFO
+  logs:
+    # A missing echo is expected and published as nan. Do not log it ten times a second.
+    ultrasonic.sensor: ERROR
 
 wifi:
   id: wifi_client
@@ -119,6 +124,58 @@ sensor:
     name: "Uptime"
     update_interval: 60s
 
+  # HC-SR04: Trig on GPIO26, Echo on GPIO27 through a 1k/2k divider.
+  # Raw reads every 100 ms feed the calibration. Published once a second as the median of those 10 reads.
+  - platform: ultrasonic
+    trigger_pin: GPIO26
+    echo_pin: GPIO27
+    name: "Door distance"
+    id: door_distance
+    update_interval: 100ms
+    accuracy_decimals: 3
+    filters:
+      - median:
+          window_size: 10
+          send_every: 10
+    on_raw_value:
+      - lambda: |-
+          if (id(calibrating) && !std::isnan(x) && x > 0) id(calibration_samples).push_back(x);
+
+globals:
+  - id: calibrating
+    type: bool
+    initial_value: "false"
+  - id: calibration_samples
+    type: std::vector<float>
+
+script:
+  - id: calibrate_door
+    mode: single
+    then:
+      - lambda: |-
+          id(calibration_samples).clear();
+          id(calibrating) = true;
+      - delay: 3s
+      - lambda: |-
+          id(calibrating) = false;
+          auto &v = id(calibration_samples);
+          if (v.size() < 5) {
+            ESP_LOGW("calibrate", "Door calibration failed: %u valid samples, need 5. Baseline unchanged.", (unsigned) v.size());
+            return;
+          }
+          std::sort(v.begin(), v.end());
+          float median = v.size() % 2 ? v[v.size() / 2] : (v[v.size() / 2 - 1] + v[v.size() / 2]) / 2;
+          ESP_LOGI("calibrate", "Door closed distance %.3f m from %u samples", median, (unsigned) v.size());
+          id(door_closed_distance).make_call().set_value(median).perform();
+          v.clear();
+
+button:
+  - platform: template
+    name: "Calibrate door"
+    id: calibrate_door_button
+    on_press:
+      - script.execute: calibrate_door
+
 output:
   - platform: gpio
     pin: GPIO25
@@ -165,7 +222,32 @@ number:
             s->start_poller();
           }
 
+  - platform: template
+    name: "Door closed distance"
+    id: door_closed_distance
+    unit_of_measurement: m
+    min_value: 0
+    max_value: 4
+    step: 0.001
+    mode: box
+    initial_value: 0
+    restore_value: true
+    optimistic: true
+
 binary_sensor:
+  - platform: template
+    name: "Door open"
+    id: door_open
+    device_class: door
+    lambda: |-
+      float closed = id(door_closed_distance).state;
+      if (std::isnan(closed) || closed <= 0 || !id(door_distance).has_state()) return {};
+      float d = id(door_distance).state;
+      return std::isnan(d) || d > closed + ${door_margin};
+    filters:
+      - delayed_on: 2s
+      - delayed_off: 1s
+
   - platform: template
     name: "Local temperature alarm"
     id: local_alarm
