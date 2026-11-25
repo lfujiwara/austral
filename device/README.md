@@ -5,9 +5,11 @@ Firmware do dispositivo Austral e um ambiente de desenvolvimento virtual. O ambi
 ## O que tem aqui
 
 - `firmware/device.yaml`: firmware em ESPHome para ESP32.
-- `schema/mqtt.json`: formato de cada tópico MQTT que o dispositivo publica ou aceita.
+- `schema/entities.json`: formato de cada tópico MQTT que o firmware publica ou aceita, com padrão do valor e unidade.
+- `schema/api.md`: contrato da API do servidor.
 - `emulator/`: script que compila o QEMU com Wi-Fi para ESP32 e os patches deste repositório.
-- `server/`: servidor local. É o broker MQTT com TLS e serve a página com o gráfico.
+- `server/`: servidor HTTP com banco SQLite. Recebe lotes de leituras, guarda o histórico e serve a página de monitoramento.
+- `deploy/`: modelo de unidade systemd para rodar o servidor.
 - `scenarios/`: roteiros que mudam temperaturas e Wi-Fi ao longo do tempo.
 - `test/e2e.mjs`: teste de ponta a ponta no emulador.
 - `dev`: comando que reúne tudo.
@@ -32,7 +34,7 @@ Para gravar numa placa real, copie `firmware/example.secrets.yaml` para `firmwar
 
 ## Formato dos dados
 
-O arquivo `schema/mqtt.json` é a referência. Ele lista cada tópico com o padrão do payload, a unidade e a frequência. O servidor confere cada mensagem com esse arquivo. O teste falha se chegar um tópico fora dele ou um payload fora do padrão.
+O arquivo `schema/entities.json` é a referência. Ele lista cada tópico com o padrão do payload, a unidade e a frequência. O servidor usa esse arquivo para conferir cada item de um lote de ingestão: o id vem do tópico sem o `/state` final.
 
 Os tópicos do dispositivo começam com `austral/<dispositivo>/`. O payload é texto puro, sem JSON. Essas mensagens saem com QoS 0 e `retain`. Quem assina recebe na hora o último valor de cada tópico.
 
@@ -59,7 +61,32 @@ O ESPHome também publica `esphome/discover/<dispositivo>` a cada conexão, com 
 
 O dispositivo aceita cinco comandos: `switch/buzzer/command` (`ON`, `OFF` ou `TOGGLE`), `text/mqtt_broker/command` (novo endereço), `number/read_interval/command` (segundos), `button/calibrate_door/command` (`PRESS`) e `number/door_closed_distance/command` (metros).
 
-A página do servidor mostra o último payload bruto de cada tópico e se ele bate com o schema.
+## Servidor
+
+O servidor em `server/` usa só módulos do Node (22.13 ou mais novo) e não tem dependências. O SQLite embutido (`node:sqlite`) guarda todo o estado. Os endpoints, as regras de ingestão e as variáveis de ambiente estão em `schema/api.md`.
+
+Arquivos:
+
+- `topics.mjs`: carrega `schema/entities.json` e confere id e valor de cada item.
+- `store.mjs`: tabelas, migrações e consultas. Cada lote entra numa transação.
+- `http.mjs`: o listener de ingestão (só `POST /ingest`, com token por dispositivo) e o listener de leitura (`/api/devices`, `/api/series`, `/api/stream` e a página).
+- `server.mjs`: lê as variáveis de ambiente, sobe os dois listeners e marca como offline o dispositivo que fica sem lote.
+
+Para rodar na mão:
+
+```sh
+cd device/server
+AUSTRAL_DB_PATH=/caminho/austral.sqlite AUSTRAL_DEVICE_TOKENS=austral-device:segredo node server.mjs
+```
+
+Para rodar os testes:
+
+```sh
+cd device/server
+node --test
+```
+
+Para rodar como serviço do usuário, `deploy/austral-server.service.in` é um modelo de unidade systemd. Troque `@NODE@` pelo caminho do `node` e `@REPO@` pelo caminho do repositório. Guarde as variáveis em `~/.config/austral/tokens.env` (os tokens) e `~/.config/austral/austral.env` (o resto), fora do git. Copie a unidade para `~/.config/systemd/user/austral-server.service` e rode `systemctl --user enable --now austral-server`. Para o serviço subir sem login, rode `loginctl enable-linger`.
 
 ## Ambiente virtual
 
@@ -72,7 +99,7 @@ cd device
 ./dev up      # sobe o servidor e o ESP32 emulado
 ```
 
-O gráfico abre em http://127.0.0.1:8080. O servidor web do dispositivo emulado abre em http://127.0.0.1:18080. O log serial fica em `.local/run/device.log`. Para parar, rode `./dev down`.
+A página de monitoramento abre em http://127.0.0.1:8080. O servidor web do dispositivo emulado abre em http://127.0.0.1:18080. O log serial fica em `.local/run/device.log`. Para parar, rode `./dev down`.
 
 Com o ambiente no ar, os sensores e o Wi-Fi mudam assim:
 
@@ -103,13 +130,16 @@ O QEMU roda com `-icount`. Sem isso, o 1-Wire perde a sincronia.
 
 O build do ambiente virtual inclui `device.yaml` e muda só o nível de log para DEBUG. O firmware é o mesmo da placa.
 
-O servidor e o emulador escutam só em `127.0.0.1`. Certificados, senhas e o firmware compilado ficam em `.local/`, fora do git.
+No ambiente virtual, o servidor e o emulador escutam só no endereço local. Senhas, o banco e o firmware compilado ficam em `.local/`, fora do git.
 
 ## Licenças
 
 O QEMU e os patches em `emulator/patches` seguem a GPL-2.0. O restante deste diretório segue a licença MIT do repositório.
 
 ## Limites
+
+O firmware ainda publica por MQTT e o servidor não tem mais broker. Até o firmware enviar lotes para `POST /ingest`, o ambiente virtual não entrega leituras ao servidor, e `./dev test` não roda.
+
 
 O ambiente virtual não emula o display OLED nem o HC-SR04. Lá, `door_distance` fica em `nan` e a calibração falha por falta de leituras. O sinal do Wi-Fi é sorteado pelo emulador e não reflete distância nem obstáculos. As redes virtuais não têm senha. Ruído elétrico e falhas de alimentação não são simulados. Algumas leituras falham no 1-Wire emulado e chegam como `nan`, com mais frequência logo depois do boot.
 
