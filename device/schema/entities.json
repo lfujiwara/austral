@@ -9,25 +9,11 @@
       "description": "online when the device connects. offline when it shuts down cleanly or when the broker loses it (last will)."
     },
     {
-      "topic": "sensor/product_temperature/state",
-      "pattern": "^(-?\\d+\\.\\d|nan)$",
-      "unit": "°C",
-      "every_seconds": 10,
-      "description": "Product probe, one decimal. nan when the probe does not answer."
-    },
-    {
       "topic": "sensor/air_temperature/state",
       "pattern": "^(-?\\d+\\.\\d|nan)$",
       "unit": "°C",
       "every_seconds": 10,
       "description": "Cabinet air probe, one decimal. nan when the probe does not answer."
-    },
-    {
-      "topic": "sensor/ambient_temperature/state",
-      "pattern": "^(-?\\d+\\.\\d|nan)$",
-      "unit": "°C",
-      "every_seconds": 10,
-      "description": "Room probe, one decimal. nan when the probe does not answer."
     },
     {
       "topic": "sensor/door_distance/state",
@@ -54,7 +40,7 @@
       "topic": "binary_sensor/local_temperature_alarm/state",
       "pattern": "^(ON|OFF)$",
       "at_boot": false,
-      "description": "ON after the product stays above -12 °C for 10 minutes. OFF 1 minute after it drops back. Published only when it changes."
+      "description": "ON after the air stays above -12 °C for 10 minutes. OFF 1 minute after it drops back. Published only when it changes."
     },
     {
       "topic": "binary_sensor/door_open/state",

@@ -15,11 +15,9 @@ esphome:
     priority: -100
     then:
       - lambda: |-
-          for (auto *s : {(PollingComponent *) id(product_temperature), (PollingComponent *) id(air_temperature), (PollingComponent *) id(ambient_temperature)}) {
-            s->stop_poller();
-            s->set_update_interval((uint32_t) id(read_interval).state * 1000);
-            s->start_poller();
-          }
+          id(air_temperature)->stop_poller();
+          id(air_temperature)->set_update_interval((uint32_t) id(read_interval).state * 1000);
+          id(air_temperature)->start_poller();
           austral::boot = esphome::random_uint32();
 
 esp32:
@@ -81,8 +79,8 @@ display:
     update_interval: 2s
     lambda: |-
       auto t = [](sensor::Sensor *s) { return s->has_state() ? str_sprintf("%.1f", s->state) : std::string("--"); };
-      it.printf(0, 0,  id(display_font), "Prod %s Air %s", t(id(product_temperature)).c_str(), t(id(air_temperature)).c_str());
-      it.printf(0, 11, id(display_font), "Amb %s  %s", t(id(ambient_temperature)).c_str(), id(local_alarm).state ? "ALARM!" : "alarm ok");
+      it.printf(0, 0,  id(display_font), "Air %s C", t(id(air_temperature)).c_str());
+      it.printf(0, 11, id(display_font), "%s", id(local_alarm).state ? "ALARM!" : "alarm ok");
       it.printf(0, 22, id(display_font), "WiFi %s  Net %s", id(wifi_client).is_connected() ? "ok" : "--", austral::last_post_ok ? "ok" : "--");
 
 one_wire:
@@ -93,16 +91,6 @@ one_wire:
 sensor:
   - platform: dallas_temp
     one_wire_id: one_wire_bus
-    address: !secret product_sensor_address
-    name: "Product temperature"
-    id: product_temperature
-    resolution: 12
-    update_interval: 10s
-    on_value:
-      - lambda: 'austral::push("sensor/product_temperature", austral::number(x, 1));'
-
-  - platform: dallas_temp
-    one_wire_id: one_wire_bus
     address: !secret air_sensor_address
     name: "Air temperature"
     id: air_temperature
@@ -110,16 +98,6 @@ sensor:
     update_interval: 10s
     on_value:
       - lambda: 'austral::push("sensor/air_temperature", austral::number(x, 1));'
-
-  - platform: dallas_temp
-    one_wire_id: one_wire_bus
-    address: !secret ambient_sensor_address
-    name: "Ambient temperature"
-    id: ambient_temperature
-    resolution: 12
-    update_interval: 10s
-    on_value:
-      - lambda: 'austral::push("sensor/ambient_temperature", austral::number(x, 1));'
 
   - platform: wifi_signal
     name: "WiFi signal"
@@ -251,11 +229,9 @@ number:
     optimistic: true
     set_action:
       - lambda: |-
-          for (auto *s : {(PollingComponent *) id(product_temperature), (PollingComponent *) id(air_temperature), (PollingComponent *) id(ambient_temperature)}) {
-            s->stop_poller();
-            s->set_update_interval((uint32_t) x * 1000);
-            s->start_poller();
-          }
+          id(air_temperature)->stop_poller();
+          id(air_temperature)->set_update_interval((uint32_t) x * 1000);
+          id(air_temperature)->start_poller();
     on_value:
       - lambda: 'austral::push("number/read_interval", austral::number(x, 1));'
 
@@ -293,7 +269,7 @@ binary_sensor:
     name: "Local temperature alarm"
     id: local_alarm
     lambda: |-
-      return id(product_temperature).has_state() && id(product_temperature).state > ${alarm_threshold};
+      return id(air_temperature).has_state() && id(air_temperature).state > ${alarm_threshold};
     filters:
       - delayed_on: 10min
       - delayed_off: 1min
