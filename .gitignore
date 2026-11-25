@@ -33,3 +33,4 @@ service_account*.json
 /device/emulator/.build/
 /device/firmware/.esphome/
 /device/server/node_modules/
+/device/whatsapp/node_modules/

@@ -3,12 +3,17 @@ set -euo pipefail
 # Generated files hold passwords and keys.
 umask 077
 
+# Keep the recipient out of all child environments except the WhatsApp receiver.
+whatsapp_recipient="${AUSTRAL_WHATSAPP_RECIPIENT:-}"
+unset AUSTRAL_WHATSAPP_RECIPIENT
+
 root="$(cd "$(dirname "$0")" && pwd)"
 local_dir="$root/.local"
 tls_dir="$local_dir/tls"
 control_dir="$local_dir/control"
 run_dir="$local_dir/run"
 firmware_dir="$local_dir/firmware"
+whatsapp_config="$local_dir/whatsapp-recipient"
 flash="$local_dir/flash.bin"
 qemu="$root/emulator/.build/qemu/build/qemu-system-xtensa"
 esphome="$local_dir/venv/bin/esphome"
@@ -16,6 +21,11 @@ esphome_version="2026.9.1"
 dependency_cutoff="2026-11-03"
 http_port="${AUSTRAL_HTTP_PORT:-8080}"
 device_web_port="${AUSTRAL_DEVICE_WEB_PORT:-18080}"
+whatsapp_port="${AUSTRAL_WHATSAPP_PORT:-19001}"
+
+if [ -z "$whatsapp_recipient" ] && [ -f "$whatsapp_config" ]; then
+  IFS= read -r whatsapp_recipient < "$whatsapp_config" || true
+fi
 
 product_rom="0xD8A1000000000128"
 air_rom="0x81A1000000000228"
@@ -31,6 +41,8 @@ usage: ./dev <command>
   up                 start the server and the emulated device in the background
   down               stop them
   server             run the server in the foreground
+  whatsapp setup     save a recipient and connect WhatsApp
+  whatsapp           connect WhatsApp with Baileys
   emulate            run the emulated device in the foreground
   temps P A M        set product, air and ambient temperatures (°C, or "unplugged")
   wifi on|off        switch the emulated access points
@@ -122,6 +134,7 @@ cmd_setup() {
     VIRTUAL_ENV="$local_dir/venv" uv pip install --quiet --exclude-newer "$dependency_cutoff" "esphome==$esphome_version"
   fi
   (cd "$root/server" && npm ci --no-audit --no-fund --silent)
+  (cd "$root/whatsapp" && npm ci --no-audit --no-fund --silent)
   ensure_tls
   ensure_credentials
   echo "setup done"
@@ -182,6 +195,34 @@ cmd_server() {
   AUSTRAL_TLS_DIR="$tls_dir" AUSTRAL_HTTP_PORT="$http_port" exec node "$root/server/server.mjs"
 }
 
+cmd_whatsapp() {
+  [ -d "$root/whatsapp/node_modules" ] || { echo "run ./dev setup first" >&2; exit 1; }
+  AUSTRAL_WHATSAPP_RECIPIENT="$whatsapp_recipient" AUSTRAL_WHATSAPP_PORT="$whatsapp_port" \
+  AUSTRAL_WHATSAPP_AUTH_DIR="$local_dir/whatsapp-auth" exec node "$root/whatsapp/server.mjs"
+}
+
+cmd_whatsapp_setup() {
+  [ -t 0 ] || { echo "execute ./dev whatsapp setup em um terminal" >&2; exit 1; }
+  if [ -n "$(running_pid whatsapp)" ]; then
+    echo "execute ./dev down antes de trocar o destinatário" >&2
+    exit 1
+  fi
+  local recipient
+  read -r -s -p 'Destinatário com código do país, apenas dígitos: ' recipient
+  printf '\n'
+  if ! [[ "$recipient" =~ ^[0-9]{8,15}$ ]]; then
+    echo "informe de 8 a 15 dígitos, incluindo o código do país" >&2
+    exit 1
+  fi
+  mkdir -p "$local_dir"
+  printf '%s\n' "$recipient" > "$whatsapp_config.next"
+  mv "$whatsapp_config.next" "$whatsapp_config"
+  whatsapp_recipient="$recipient"
+  echo "Destinatário salvo em .local/whatsapp-recipient"
+  echo "Leia o QR se o WhatsApp pedir pareamento; pressione Ctrl+C após whatsapp connected"
+  cmd_whatsapp
+}
+
 cmd_ota() {
   compile_firmware
   [ -n "$(running_pid device)" ] || { echo "the emulated device is not running; ./dev up first" >&2; exit 1; }
@@ -216,11 +257,13 @@ running_pid() {
   local pid_file="$run_dir/$1.pid" pid
   [ -f "$pid_file" ] || return 0
   pid="$(cat "$pid_file")"
-  if ps -p "$pid" -o command= 2> /dev/null | grep -q -F "$root"; then
-    echo "$pid"
-  else
-    rm -f "$pid_file"
+  local command
+  if [[ "$pid" =~ ^[1-9][0-9]*$ ]] && command="$(ps -ww -p "$pid" -o command= 2>/dev/null)"; then
+    case "$1:$command" in
+      "server:node $root/server/server.mjs"|"whatsapp:node $root/whatsapp/server.mjs"|"device:$qemu -nographic -machine esp32-picsimlab "*) echo "$pid"; return ;;
+    esac
   fi
+  rm -f "$pid_file"
 }
 
 start_background() {
@@ -233,31 +276,86 @@ start_background() {
   mkdir -p "$run_dir"
   nohup "$@" < /dev/null > "$run_dir/$name.log" 2>&1 &
   echo $! > "$run_dir/$name.pid"
+  started_services="$name $started_services"
   sleep 1
   [ -n "$(running_pid "$name")" ] || { echo "$name exited; see $run_dir/$name.log" >&2; tail -5 "$run_dir/$name.log" >&2; exit 1; }
 }
 
+lock_services() {
+  mkdir -p "$run_dir"
+  shlock -p "$$" -f "$run_dir/services.lock" || { echo "another ./dev up or down is in progress" >&2; exit 1; }
+  trap 'rm -f "$run_dir/services.lock"' EXIT
+}
+
+finish_startup() {
+  local status=$? name
+  if [ "$status" -ne 0 ]; then
+    for name in $started_services; do stop_background "$name"; done
+  fi
+  rm -f "$run_dir/services.lock"
+}
+
 cmd_up() {
-  start_background server "$0" server
-  start_background device "$0" emulate
+  lock_services
+  started_services=''
+  trap finish_startup EXIT
+  local managed_whatsapp=false
+  if [ -n "$whatsapp_recipient" ] && [ -z "${AUSTRAL_EVENT_FORWARD_URL+x}" ]; then
+    export AUSTRAL_EVENT_FORWARD_URL="http://127.0.0.1:$whatsapp_port/events"
+    managed_whatsapp=true
+  fi
+
+  # Compare without storing endpoint URLs, which may contain credentials.
+  local config_file="$run_dir/forward.sha256" config_digest
+  config_digest="$(printf '%s\n%s' "$managed_whatsapp" "${AUSTRAL_EVENT_FORWARD_URL:-}" | shasum -a 256)"
+  if [ -n "$(running_pid server)" ] && { [ ! -f "$config_file" ] || [ "$(cat "$config_file")" != "$config_digest" ]; }; then
+    echo "broker forwarding configuration changed; run ./dev down, then ./dev up" >&2
+    exit 1
+  fi
+  if "$managed_whatsapp"; then
+    AUSTRAL_WHATSAPP_RECIPIENT="$whatsapp_recipient" AUSTRAL_WHATSAPP_PORT="$whatsapp_port" \
+      start_background whatsapp "$root/dev" whatsapp
+    local ready=false
+    for _ in {1..50}; do
+      if grep -Fqx "whatsapp event receiver on $AUSTRAL_EVENT_FORWARD_URL" "$run_dir/whatsapp.log"; then
+        ready=true
+        break
+      fi
+      [ -n "$(running_pid whatsapp)" ] || break
+      sleep 0.1
+    done
+    "$ready" || { echo "WhatsApp receiver failed to start; see $run_dir/whatsapp.log" >&2; exit 1; }
+  fi
+  start_background server "$root/dev" server
+  printf '%s\n' "$config_digest" > "$config_file"
+  start_background device "$root/dev" emulate
   echo "chart:      http://127.0.0.1:$http_port"
   echo "device web: http://127.0.0.1:$device_web_port"
   echo "serial log: $run_dir/device.log"
 }
 
-cmd_down() {
-  local name pid
-  for name in device server; do
-    pid="$(running_pid "$name")"
-    [ -n "$pid" ] || continue
-    kill "$pid" 2> /dev/null || true
-    for _ in $(seq 50); do
-      kill -0 "$pid" 2> /dev/null || break
-      sleep 0.1
-    done
-    kill -9 "$pid" 2> /dev/null || true
-    rm -f "$run_dir/$name.pid"
+stop_background() {
+  local name="$1" pid
+  pid="$(running_pid "$name")"
+  [ -n "$pid" ] || return 0
+  kill "$pid" 2> /dev/null || true
+  for _ in {1..50}; do
+    current="$(ps -ww -p "$pid" -o command= 2>/dev/null || true)"
+    case "$name:$current" in
+      "server:node $root/server/server.mjs"|"whatsapp:node $root/whatsapp/server.mjs"|"device:$qemu -nographic -machine esp32-picsimlab "*) sleep 0.1 ;;
+      *) break ;;
+    esac
   done
+  current="$(ps -ww -p "$pid" -o command= 2>/dev/null || true)"
+  case "$name:$current" in
+    "server:node $root/server/server.mjs"|"whatsapp:node $root/whatsapp/server.mjs"|"device:$qemu -nographic -machine esp32-picsimlab "*) kill -9 "$pid" 2> /dev/null || true ;;
+  esac
+  rm -f "$run_dir/$name.pid"
+}
+
+cmd_down() {
+  lock_services
+  for name in device server whatsapp; do stop_background "$name"; done
 }
 
 cmd_scenario() {
@@ -275,6 +373,16 @@ case "$command" in
   up) cmd_up ;;
   down) cmd_down ;;
   server) cmd_server ;;
+  whatsapp)
+    if [ "${1:-}" = setup ]; then
+      cmd_whatsapp_setup
+    elif [ $# -eq 0 ]; then
+      cmd_whatsapp
+    else
+      usage
+      exit 1
+    fi
+    ;;
   emulate) cmd_emulate ;;
   temps) [ $# -eq 3 ] || { usage; exit 1; }; set_temps "$@" ;;
   wifi) [ $# -eq 1 ] || { usage; exit 1; }; set_wifi "$1" ;;

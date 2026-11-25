@@ -8,7 +8,9 @@ const deviceLog = join(root, '.local', 'run', 'device.log')
 const base = `http://127.0.0.1:${process.env.AUSTRAL_HTTP_PORT ?? 8080}`
 const schema = JSON.parse(readFileSync(join(root, 'schema', 'mqtt.json'), 'utf8'))
 
-const run = (...args) => execFileSync(dev, args, { stdio: 'inherit' })
+const childEnv = { ...process.env, AUSTRAL_EVENT_FORWARD_URL: '' }
+delete childEnv.AUSTRAL_WHATSAPP_RECIPIENT
+const run = (...args) => execFileSync(dev, args, { stdio: 'inherit', env: childEnv })
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 async function device () {
