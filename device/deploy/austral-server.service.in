@@ -1,0 +1,17 @@
+[Unit]
+Description=Austral server
+After=network-online.target
+
+[Service]
+# Replace @NODE@ with the absolute path of node and @REPO@ with the path of this repository.
+ExecStart=@NODE@ @REPO@/device/server/server.mjs
+EnvironmentFile=%h/.config/austral/tokens.env
+EnvironmentFile=%h/.config/austral/austral.env
+StateDirectory=austral-server
+UMask=0077
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
