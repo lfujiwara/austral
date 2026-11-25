@@ -52,9 +52,26 @@ O dispositivo aceita três comandos: `switch/buzzer/command` (`ON`, `OFF` ou `TO
 
 A página do servidor mostra o último payload bruto de cada tópico e se ele bate com o schema.
 
+## Encaminhamento HTTP
+
+O broker envia cada mensagem MQTT válida por `POST`, com JSON no formato `{"topic":"...","payload":"...","at":0}`. Para usar um receptor já em execução, defina `AUSTRAL_EVENT_FORWARD_URL` antes de iniciar `./dev server` ou `./dev up`. Essa URL tem prioridade sobre o receptor automático do WhatsApp. O valor vazio desativa o encaminhamento.
+
+Se o destino falhar, o broker registra o erro em `.local/run/server.log` e continua recebendo mensagens. Cada evento tem uma tentativa de envio.
+
+## WhatsApp
+
+O receptor em `whatsapp/` usa Baileys para vincular uma conta pelo WhatsApp Web. Envia um aviso ao receber o tópico `austral/<dispositivo>/binary_sensor/local_temperature_alarm/state` com o valor `ON`. Leituras de temperatura, comandos do buzzer e o valor `OFF` não enviam avisos.
+
+1. Rode `./dev setup` para instalar as dependências.
+2. Rode `./dev whatsapp setup` em um terminal. Digite o número com código do país, apenas dígitos. A entrada fica oculta e é salva em `.local/whatsapp-recipient`, fora do git. No primeiro uso, leia o QR em **WhatsApp → Aparelhos conectados → Conectar aparelho**. Quando aparecer `whatsapp connected`, pressione Ctrl+C. O pareamento fica salvo em `.local/whatsapp-auth/`.
+3. Rode `./dev up`. Ele inicia broker, emulador e receptor WhatsApp, e configura o encaminhamento entre eles. Para simular o alarme real do firmware, rode `./dev scenario warm-up`; o aviso sai depois de 10 minutos acima de -12 °C. A variável `AUSTRAL_WHATSAPP_RECIPIENT` pode substituir o destinatário salvo, e `AUSTRAL_EVENT_FORWARD_URL` pode apontar para outro receptor.
+4. Rode `./dev down` para parar os serviços. Para trocar o destinatário, rode primeiro `./dev down` e depois repita `./dev whatsapp setup`. Para consultar o estado da conexão, veja `.local/run/whatsapp.log`. `whatsapp temperature alarm submitted` indica que Baileys aceitou o envio; não confirma entrega ou leitura.
+
+Sem destinatário configurado e sem URL, `./dev up` inicia apenas o broker e o emulador. Para usar outro receptor, defina `AUSTRAL_EVENT_FORWARD_URL` antes de rodar `./dev up`; essa URL tem prioridade sobre o WhatsApp.
+
 ## Ambiente virtual
 
-Requisitos: macOS com Homebrew, Node 20.11 ou mais novo, `uv`, `git`, `openssl` e acesso à internet. O setup baixa o QEMU, o ESPHome e as ferramentas de compilação do ESP32.
+Requisitos: macOS com Homebrew, Node 20.11 ou mais novo, `uv`, `git`, `openssl` e acesso à internet. O setup baixa o QEMU, o ESPHome e as ferramentas de compilação do ESP32, além das dependências Node do servidor e da conexão WhatsApp.
 
 ```sh
 cd device

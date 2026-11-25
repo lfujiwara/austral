@@ -8,6 +8,7 @@ import { Aedes } from 'aedes'
 const host = '127.0.0.1'
 const mqttPort = 8883
 const httpPort = Number(process.env.AUSTRAL_HTTP_PORT ?? 8080)
+const eventForwardUrl = process.env.AUSTRAL_EVENT_FORWARD_URL
 const tlsDir = required('AUSTRAL_TLS_DIR')
 const username = required('AUSTRAL_MQTT_USERNAME')
 const password = Buffer.from(required('AUSTRAL_MQTT_PASSWORD'))
@@ -85,7 +86,23 @@ function recordMessage (topic, payload, at) {
   }
   messages.get(deviceId)[suffix] = message
   broadcast({ device: deviceId, kind: 'message', id: suffix, ...message })
+  if (valid === true) void forwardEvent({ topic, payload, at })
   return valid === true
+}
+
+async function forwardEvent (event) {
+  if (!eventForwardUrl) return
+  try {
+    const response = await fetch(eventForwardUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(event),
+      signal: AbortSignal.timeout(5000)
+    })
+    if (!response.ok) console.error(`event forward failed: HTTP ${response.status}`)
+  } catch (error) {
+    console.error(`event forward failed: ${error.message}`)
+  }
 }
 
 function record (topic, payload, at) {
