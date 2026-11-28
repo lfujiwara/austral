@@ -202,6 +202,23 @@ number:
     optimistic: true
 
 binary_sensor:
+  # MC-38 reed, normally open, one wire on GPIO33 and the other on GND.
+  # Internal pull-up: contact closed (magnet near) pulls the pin low and the door is shut.
+  # Contact open leaves the pin high and the door is open. device_class door uses ON for open.
+  - platform: gpio
+    name: "Door contact"
+    id: door_contact
+    device_class: door
+    pin:
+      number: GPIO33
+      mode:
+        input: true
+        pullup: true
+      inverted: false
+    filters:
+      - delayed_on: 100ms
+      - delayed_off: 100ms
+
   - platform: template
     name: "Door open"
     id: door_open

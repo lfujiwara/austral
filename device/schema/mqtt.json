@@ -37,6 +37,11 @@
       "description": "Seconds since boot. Drops back after a reboot or an OTA update."
     },
     {
+      "topic": "binary_sensor/door_contact/state",
+      "pattern": "^(ON|OFF)$",
+      "description": "MC-38 reed on GPIO33 with the internal pull-up, other wire on GND. ON when the contact is open (door open). OFF when the magnet closes the contact (door shut)."
+    },
+    {
       "topic": "binary_sensor/door_open/state",
       "pattern": "^(ON|OFF)$",
       "at_boot": false,

@@ -22,9 +22,15 @@ Esta branch é a variante offline. A buzina e a tela ficam fora do firmware que 
 
 O firmware lê um DS18B20 no barramento 1-Wire do GPIO4, a sonda de ar. Lê a cada 10 segundos, com resolução de 12 bits. O intervalo vai de 5 a 300 segundos e fica salvo na flash.
 
-O HC-SR04 mede a distância até a porta. O Trig fica no GPIO26 e o Echo no GPIO27, atrás de um divisor de 1 kΩ e 2 kΩ. O sensor mede a cada 100 ms. O dispositivo publica a mediana de cada segundo, em metros. Sem eco, o valor é `nan`.
+## Sensores e ligação
 
-O estado da porta sai da distância do HC-SR04. Feche a porta e aperte "Calibrate door" na página web do dispositivo, ou publique `PRESS` em `button/calibrate_door/command`. O dispositivo mede por 3 segundos, calcula a mediana das leituras válidas e grava "Door closed distance". Com menos de 5 leituras válidas, mantém o valor antigo e registra um aviso no log. Esse valor também aceita ajuste manual e fica salvo na flash. O valor 0 significa sem calibração.
+O DS18B20 da sonda de ar fica no barramento 1-Wire do GPIO4.
+
+O HC-SR04 mede a distância até a porta. O Trig fica no GPIO26 e o Echo no GPIO27, atrás de um divisor de 1 kΩ e 2 kΩ. O sensor mede a cada 100 ms. O dispositivo publica a mediana de cada segundo, em metros. Sem eco, o valor é `nan`. "Door open" continua saindo dessa distância, depois da calibração.
+
+O contato de porta é um reed switch MC-38, normalmente aberto, sem polaridade. Um fio vai no GPIO33 e o outro no GND. O ímã fica na porta. O pino usa o pull-up interno. Com o ímã perto, o contato fecha, o pino vai a nível baixo e a porta conta como fechada (`OFF`). Com o contato aberto, o pino fica em nível alto e a porta conta como aberta (`ON`). O estado sai em `binary_sensor/door_contact/state`, com um filtro de 100 ms. O emulador não simula esse pino: lá o valor não acompanha uma porta de verdade.
+
+Para calibrar a distância, feche a porta e aperte "Calibrate door" na página web do dispositivo, ou publique `PRESS` em `button/calibrate_door/command`. O dispositivo mede por 3 segundos, calcula a mediana das leituras válidas e grava "Door closed distance". Com menos de 5 leituras válidas, mantém o valor antigo e registra um aviso no log. Esse valor também aceita ajuste manual e fica salvo na flash. O valor 0 significa sem calibração.
 
 "Door open" fica `ON` quando a distância passa de "Door closed distance" mais 0,05 m por 2 segundos. Um eco ausente conta como porta aberta. Volta a `OFF` depois de 1 segundo. O estado da porta só é publicado depois da calibração. A margem é a substituição `door_margin` em `firmware/device.yaml`.
 
@@ -75,6 +81,7 @@ Os tópicos do dispositivo começam com `austral/<dispositivo>/`. O payload é t
 | `sensor/door_distance/state` | número com três casas, ou `nan` | m | 1 s |
 | `sensor/wifi_signal/state` | inteiro | dBm | 60 s |
 | `sensor/uptime/state` | inteiro | s | 60 s |
+| `binary_sensor/door_contact/state` | `ON` ou `OFF` | | quando muda |
 | `binary_sensor/door_open/state` | `ON` ou `OFF` | | quando muda, depois da calibração |
 | `binary_sensor/local_temperature_alarm/state` | `ON` ou `OFF` | | quando muda |
 | `text/mqtt_broker/state` | endereço do broker | | quando muda |
@@ -183,7 +190,7 @@ O QEMU e os patches em `emulator/patches` seguem a GPL-2.0. O restante deste dir
 
 ## Limites
 
-O ambiente virtual não emula o display OLED nem o HC-SR04. No emulador, `door_distance` fica em `nan` e a calibração falha por falta de leituras. O estado da porta não é publicado. O sinal do Wi-Fi é sorteado pelo emulador e não reflete distância nem obstáculos. As redes virtuais não têm senha. Ruído elétrico e falhas de alimentação não são simulados. Algumas leituras falham no 1-Wire emulado e chegam como `nan`, com mais frequência logo depois do boot.
+O ambiente virtual não emula o display OLED nem o HC-SR04. No emulador, `door_distance` fica em `nan` e a calibração falha por falta de leituras. `binary_sensor/door_open` não é publicado. O emulador também não simula o reed switch no GPIO33. `door_contact` não segue a abertura de uma porta. O sinal do Wi-Fi é sorteado pelo emulador e não reflete distância nem obstáculos. As redes virtuais não têm senha. Ruído elétrico e falhas de alimentação não são simulados. Algumas leituras falham no 1-Wire emulado e chegam como `nan`, com mais frequência logo depois do boot.
 
 ## Próximos passos
 
