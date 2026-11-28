@@ -2,6 +2,7 @@ const lines = [
   { id: 'air_temperature', label: 'Air', color: '--air', dash: [], css: 'solid' }
 ]
 const maxPoints = 4320
+const maxProbeFailures = 20
 const devices = Object.create(null)
 const messages = Object.create(null)
 const verdicts = { true: ['matches', 'ok'], false: ['mismatch', 'mismatch'], null: ['not in schema', 'unknown'] }
@@ -10,7 +11,7 @@ const windowSelect = document.getElementById('window')
 const canvas = document.getElementById('chart')
 
 function entry (id) {
-  devices[id] ??= { status: null, series: Object.create(null), states: Object.create(null) }
+  devices[id] ??= { status: null, series: Object.create(null), states: Object.create(null), probeFailures: [] }
   if (![...deviceSelect.options].some((option) => option.value === id)) deviceSelect.add(new Option(id, id))
   return devices[id]
 }
@@ -22,7 +23,10 @@ function apply (event) {
     return
   }
   const device = entry(event.device)
-  if (event.kind === 'status') device.status = event.value
+  if (event.kind === 'probe') {
+    device.probeFailures.push({ at: event.at, bytes: event.bytes, received: event.received, computed: event.computed })
+    if (device.probeFailures.length > maxProbeFailures) device.probeFailures.splice(0, device.probeFailures.length - maxProbeFailures)
+  } else if (event.kind === 'status') device.status = event.value
   else if (event.kind === 'state') device.states[event.id] = event.value
   else {
     const series = (device.series[event.id] ??= [])
@@ -135,12 +139,27 @@ function renderMessages (byTopic) {
     .join('')
 }
 
+function renderProbe (device) {
+  const failures = device.probeFailures
+  document.getElementById('probe-summary').textContent = failures.length
+    ? `The probe checksum failed ${failures.length} time${failures.length === 1 ? '' : 's'} since the server started (last ${failures.length} shown, newest first). Bytes are the 9 scratch pad bytes the probe sent. Received is the 9th byte, computed is the CRC the device calculated from the first 8.`
+    : 'No checksum failure reported since the server started.'
+  document.getElementById('probe').innerHTML = failures
+    .slice()
+    .reverse()
+    .map((failure) => `<tr><td class="num">${new Date(failure.at).toLocaleTimeString()}</td>` +
+      `<td class="payload">${escape(failure.bytes.join(' '))}</td>` +
+      `<td class="payload">${escape(failure.received)}</td><td class="payload">${escape(failure.computed)}</td></tr>`)
+    .join('')
+}
+
 function render () {
   const device = devices[deviceSelect.value]
   if (!device) return
   renderStats(device)
   renderChart(device)
   renderMessages(messages[deviceSelect.value])
+  renderProbe(device)
 }
 
 document.getElementById('legend').innerHTML = lines
@@ -162,6 +181,7 @@ async function loadSnapshot () {
 
 function isNew (event) {
   if (event.kind === 'message') return !(messages[event.device]?.[event.id]?.at >= event.at)
+  if (event.kind === 'probe') return !devices[event.device]?.probeFailures.some((failure) => failure.at >= event.at)
   if (event.kind !== 'sensor') return true
   const series = devices[event.device]?.series[event.id]
   return !(series?.length && series[series.length - 1][0] >= event.at)

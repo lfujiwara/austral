@@ -90,6 +90,8 @@ Os tópicos do dispositivo começam com `austral/<dispositivo>/`. O payload é t
 | `number/alarm_threshold/state` | número | °C | quando muda |
 | `debug` | linha de log do dispositivo | | a cada log |
 
+Quando o checksum da sonda falha, o log `debug` traz um aviso `Scratch pad: 50.05.4B.46.7F.FF.0C.10.1C (1C)`. São os 9 bytes que a sonda enviou e, entre parênteses, o CRC que o firmware calculou com os 8 primeiros. O painel mostra essas linhas na seção Debug da sonda. O firmware usa uma cópia local do componente `dallas_temp` do ESPHome 2026.6.5 em `firmware/components/dallas_temp`. Ela difere do original em uma linha: o nível do log passa de DEBUG para WARN.
+
 `nan` indica um sensor que não respondeu. O broker publica `offline` em nome do dispositivo quando perde a conexão com ele. `binary_sensor/door_open/state` só aparece depois da calibração.
 
 O ESPHome também publica `esphome/discover/<dispositivo>` a cada conexão, com `retain`. O payload é um JSON com os endereços IP, o MAC, a versão do ESPHome e a placa. Esse tópico fica fora do prefixo e o servidor não confere o formato dele.

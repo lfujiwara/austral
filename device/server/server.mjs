@@ -18,6 +18,7 @@ const maxPoints = 4320
 const maxDevices = 32
 const maxTopicsPerDevice = 128
 const maxStoredPayload = 1024
+const maxProbeFailures = 20
 
 function required (name) {
   const value = process.env[name]
@@ -26,9 +27,12 @@ function required (name) {
 }
 
 /**
+ * @typedef {{ at: number, bytes: string[], received: string, computed: string }} ProbeFailure
+ *   bytes are the 9 scratch pad bytes in hex as the probe sent them. received is bytes[8]. computed is the CRC the device calculated from bytes 0 to 7.
  * @typedef {{ status: string | null,
  *   series: Record<string, Array<[number, number | null]>>,
- *   states: Record<string, string> }} Device
+ *   states: Record<string, string>,
+ *   probeFailures: ProbeFailure[] }} Device
  * @typedef {{ payload: string, at: number, count: number, invalid: number, valid: boolean | null }} Message
  *   valid is null for a topic the schema does not list.
  */
@@ -42,7 +46,7 @@ const schema = JSON.parse(await readFile(schemaFile, 'utf8'))
 const patterns = new Map([...schema.published, ...schema.commands].map((entry) => [entry.topic, new RegExp(entry.pattern)]))
 
 function device (id) {
-  if (!devices.has(id)) devices.set(id, { status: null, series: Object.create(null), states: Object.create(null) })
+  if (!devices.has(id)) devices.set(id, { status: null, series: Object.create(null), states: Object.create(null), probeFailures: [] })
   return devices.get(id)
 }
 
@@ -61,6 +65,16 @@ function parseTopic (topic) {
     return { device: parts[1], kind: parts[2] === 'sensor' ? 'sensor' : 'state', id: `${parts[2]}/${parts[3]}` }
   }
   return null
+}
+
+// The device logs this line at DEBUG when the DS18B20 checksum fails, e.g. "Scratch pad: 50.05.4B.46.7F.FF.0C.10.1C (1C)".
+const scratchPad = /\[dallas\.temp\.sensor:\d+\]: Scratch pad: ((?:[0-9A-F]{2}\.){8}[0-9A-F]{2}) \(([0-9A-F]{2})\)/
+
+function parseProbeFailure (payload, at) {
+  const match = scratchPad.exec(payload.replace(/\x1b\[[0-9;]*m/g, ''))
+  if (!match) return null
+  const bytes = match[1].split('.')
+  return { at, bytes, received: bytes[8], computed: match[2] }
 }
 
 function broadcast (event) {
@@ -92,7 +106,16 @@ function recordMessage (topic, payload, at) {
 function record (topic, payload, at) {
   if (!recordMessage(topic, payload, at)) return
   const parsed = parseTopic(topic)
-  if (!parsed) return
+  if (!parsed) {
+    const [, deviceId, ...rest] = topic.split('/')
+    const failure = rest.join('/') === 'debug' ? parseProbeFailure(payload, at) : null
+    if (!failure) return
+    const failures = device(deviceId).probeFailures
+    failures.push(failure)
+    if (failures.length > maxProbeFailures) failures.splice(0, failures.length - maxProbeFailures)
+    broadcast({ device: deviceId, kind: 'probe', ...failure })
+    return
+  }
   const entry = device(parsed.device)
   let event
   if (parsed.kind === 'status') {

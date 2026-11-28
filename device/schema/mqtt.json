@@ -79,7 +79,7 @@
     {
       "topic": "debug",
       "pattern": "^[\\s\\S]*$",
-      "description": "Device log lines at the firmware log level, with ANSI colors."
+      "description": "Device log lines at the firmware log level, with ANSI colors. When the DS18B20 checksum fails it carries a warning like `Scratch pad: 50.05.4B.46.7F.FF.0C.10.1C (1C)`: the 9 bytes the probe sent, then the CRC the device computed from the first 8. The server lists these under Debug da sonda."
     }
   ],
   "commands": [
