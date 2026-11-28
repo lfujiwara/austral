@@ -1,0 +1,15 @@
+(version 1)
+(rule "isolamento 0,6 mm entre redes"
+  (constraint clearance (min 0.6mm)))
+(rule "trilha de sinal >= 1,0 mm"
+  (condition "A.Type == 'track'")
+  (constraint track_width (min 1.0mm)))
+(rule "potencia >= 1,5 mm"
+  (condition "A.Type == 'track' && (A.NetName == 'GND' || A.NetName == '+5V' || A.NetName == 'VBAT')")
+  (constraint track_width (min 1.5mm)))
+(rule "furos 0,8 a 1,2 mm"
+  (constraint hole_size (min 0.8mm) (max 1.2mm)))
+(rule "anel >= 0,4 mm"
+  (constraint annular_width (min 0.4mm)))
+(rule "cobre a >= 0,5 mm da borda"
+  (constraint edge_clearance (min 0.5mm)))

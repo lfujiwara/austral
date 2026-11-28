@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "filename": "austral.kicad_pro",
+    "version": 3
+  },
+  "board": {
+    "design_settings": {
+      "rules": {
+        "min_clearance": 0.6,
+        "min_track_width": 1.0,
+        "min_through_hole_diameter": 0.8,
+        "min_hole_clearance": 0.25,
+        "min_copper_edge_clearance": 0.5
+      }
+    }
+  },
+  "net_settings": {
+    "classes": [
+      {
+        "name": "Default",
+        "clearance": 0.6,
+        "track_width": 1.0,
+        "via_diameter": 2.0,
+        "via_drill": 0.8
+      }
+    ],
+    "meta": {
+      "version": 3
+    }
+  }
+}

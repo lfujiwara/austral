@@ -1,0 +1,32 @@
+== DRC do KiCad 9 (kicad-cli pcb drc, regras em fonte/kicad/austral.kicad_dru) ==
+** Drc report for austral.kicad_pcb **
+** Created on 2026-11-28T03:53:06-0300 **
+
+** Found 0 DRC violations **
+
+** Found 0 unconnected pads **
+
+** Found 0 Footprint errors **
+
+** End of Report **
+
+== Checagem própria (fonte/checar.py) ==
+OK     netlist da placa igual à do esquema (9 redes, 28 ligações)
+OK     rede VBAT: 1 pedaço(s) de cobre, 2 pads ligados
+OK     rede GND: 1 pedaço(s) de cobre, 8 pads ligados
+OK     rede +5V: 1 pedaço(s) de cobre, 4 pads ligados
+OK     rede +3V3: 1 pedaço(s) de cobre, 2 pads ligados
+OK     rede DQ: 1 pedaço(s) de cobre, 3 pads ligados
+OK     rede TRIG: 1 pedaço(s) de cobre, 2 pads ligados
+OK     rede ECHO5V: 1 pedaço(s) de cobre, 2 pads ligados
+OK     rede ECHO: 1 pedaço(s) de cobre, 3 pads ligados
+OK     rede REED: 1 pedaço(s) de cobre, 2 pads ligados
+OK     isolamento mínimo entre redes = 0.64 mm (exigido ≥ 0.6 mm; par mais próximo: (sem rede) U1.1 × (sem rede) U1.2)
+OK     cobre a ≥ 1.25 mm da borda (exigido ≥ 0.5 mm)
+OK     larguras: sinal ≥ 1,0 mm, 5 V/bateria/GND ≥ 1,5 mm
+OK     ilhas ≥ 2,0 mm (oval 1,9x2,6 nas barras fêmea), anel ≥ 0,45 mm, furos 0,8–1,2 mm
+OK     jumpers de fio: 0
+
+RESULTADO: PASSOU
+
+Escala medida no PNG 600 dpi: moldura interna 69,98 x 50,00 mm.
