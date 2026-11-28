@@ -19,8 +19,8 @@
       "topic": "sensor/door_distance/state",
       "pattern": "^(\\d+\\.\\d{3}|nan)$",
       "unit": "m",
-      "every_seconds": 1,
-      "description": "HC-SR04 median over 1 s. Trig GPIO26, echo GPIO27. nan when the echo does not arrive."
+      "every_seconds": 0.5,
+      "description": "HC-SR04 median over 0.5 s (last 10 raw reads). Trig GPIO26, echo GPIO27. nan when the echo does not arrive."
     },
     {
       "topic": "sensor/wifi_signal/state",

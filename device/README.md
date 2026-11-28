@@ -26,7 +26,7 @@ O firmware lê um DS18B20 no barramento 1-Wire do GPIO4, a sonda de ar. Ele pega
 
 O DS18B20 da sonda de ar fica no barramento 1-Wire do GPIO4.
 
-O HC-SR04 mede a distância até a porta. O Trig fica no GPIO26 e o Echo no GPIO27, atrás de um divisor de 1 kΩ e 2 kΩ. O sensor mede a cada 100 ms. O dispositivo publica a mediana de cada segundo, em metros. Sem eco, o valor é `nan`. "Door open" continua saindo dessa distância, depois da calibração.
+O HC-SR04 mede a distância até a porta. O Trig fica no GPIO26 e o Echo no GPIO27, atrás de um divisor de 1 kΩ e 2 kΩ. O sensor mede a cada 100 ms. O dispositivo publica a cada 500 ms a mediana das últimas 10 leituras, em metros. Sem eco, o valor é `nan`. "Door open" continua saindo dessa distância, depois da calibração.
 
 O contato de porta é um reed switch MC-38, normalmente aberto, sem polaridade. Um fio vai no GPIO33 e o outro no GND. O ímã fica na porta. O pino usa o pull-up interno. Com o ímã perto, o contato fecha, o pino vai a nível baixo e a porta conta como fechada (`OFF`). Com o contato aberto, o pino fica em nível alto e a porta conta como aberta (`ON`). O estado sai em `binary_sensor/door_contact/state`, com um filtro de 100 ms. O emulador não simula esse pino: lá o valor não acompanha uma porta de verdade.
 
@@ -78,7 +78,7 @@ Os tópicos do dispositivo começam com `austral/<dispositivo>/`. O payload é t
 | --- | --- | --- | --- |
 | `status` | `online` ou `offline` | | na conexão e na queda |
 | `sensor/air_temperature/state` | número com uma casa, ou `nan` | °C | 10 s |
-| `sensor/door_distance/state` | número com três casas, ou `nan` | m | 1 s |
+| `sensor/door_distance/state` | número com três casas, ou `nan` | m | 0,5 s |
 | `sensor/wifi_signal/state` | inteiro | dBm | 60 s |
 | `sensor/uptime/state` | inteiro | s | 60 s |
 | `binary_sensor/door_contact/state` | `ON` ou `OFF` | | quando muda |

@@ -113,7 +113,7 @@ sensor:
     update_interval: 60s
 
   # HC-SR04: Trig on GPIO26, Echo on GPIO27 through a 1k/2k divider.
-  # Raw reads every 100 ms feed the calibration. Published once a second as the median of those 10 reads.
+  # Raw reads every 100 ms feed the calibration. Published every 500 ms as the median of the last 10 reads.
   - platform: ultrasonic
     trigger_pin: GPIO26
     echo_pin: GPIO27
@@ -124,7 +124,7 @@ sensor:
     filters:
       - median:
           window_size: 10
-          send_every: 10
+          send_every: 5
     on_raw_value:
       - lambda: |-
           if (id(calibrating) && !std::isnan(x) && x > 0) id(calibration_samples).push_back(x);
