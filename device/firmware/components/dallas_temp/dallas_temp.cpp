@@ -68,9 +68,23 @@ bool DallasTemperatureSensor::read_scratch_pad_() {
   return success;
 }
 
-void DallasTemperatureSensor::setup() {
-  if (!this->check_address_or_index_())
+void DallasTemperatureSensor::log_search_result() {
+  if (this->address_ == 0) {
+    // Austral: upstream only logs this at ERROR in one_wire or at CONFIG in dump_config.
+    // WARN keeps "no device" visible at the INFO log level and in the device log (/events).
+    ESP_LOGW(TAG, "One-wire search found no device");
     return;
+  }
+  // Austral: upstream logs the address at CONFIG in dump_config, which is compiled out at INFO.
+  ESP_LOGI(TAG, "One-wire search found %s", this->get_address_name().c_str());
+}
+
+void DallasTemperatureSensor::setup() {
+  if (!this->check_address_or_index_()) {
+    this->log_search_result();
+    return;
+  }
+  this->log_search_result();
   if (!this->read_scratch_pad_())
     return;
   if (!this->check_scratch_pad_())

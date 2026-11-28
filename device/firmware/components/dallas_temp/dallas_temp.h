@@ -11,6 +11,8 @@ class DallasTemperatureSensor : public PollingComponent, public sensor::Sensor, 
   void setup() override;
   void update() override;
   void dump_config() override;
+  /// Log the ROM selected by the One-Wire search, or that none was found.
+  void log_search_result();
 
   /// Set the resolution for this sensor.
   void set_resolution(uint8_t resolution) { this->resolution_ = resolution; }

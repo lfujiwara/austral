@@ -27,12 +27,17 @@ esphome:
             id(mqtt_client)->disable();
             id(mqtt_client)->enable();
           }
+      # Setup runs before the web server accepts /events. Repeat the search result once the device is on the network.
+      - delay: 10s
+      - lambda: id(air_temperature)->log_search_result();
 
 esp32:
   board: esp32dev
 
-# Local copy of the ESPHome dallas_temp component. It differs from upstream in one line: the scratch pad
-# bytes of a failed checksum are logged at WARN instead of DEBUG. See components/dallas_temp/dallas_temp.cpp.
+# Local copy of the ESPHome dallas_temp component. It differs from upstream in two places: the scratch pad
+# bytes of a failed checksum are logged at WARN instead of DEBUG, and setup logs the ROM found by the
+# One-Wire search (or that none was found) at WARN/INFO so it appears at the INFO log level. See
+# components/dallas_temp/dallas_temp.cpp.
 external_components:
   - source:
       type: local
@@ -86,7 +91,8 @@ one_wire:
 sensor:
   - platform: dallas_temp
     one_wire_id: one_wire_bus
-    address: !secret air_sensor_address
+    # First device found by the GPIO4 One-Wire ROM search at setup. No stored ROM address.
+    index: 0
     name: "Air temperature"
     id: air_temperature
     resolution: 12
