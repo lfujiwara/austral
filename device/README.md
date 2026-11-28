@@ -2,27 +2,51 @@
 
 Firmware do dispositivo Austral e um ambiente de desenvolvimento virtual. O ambiente roda o firmware num ESP32 emulado, com sensores e Wi-Fi simulados, e mostra as leituras num gráfico. Não precisa de placa nem de sensores.
 
+Esta branch é a variante offline. A buzina fica fora do firmware que a placa roda. A seção "Buzina" explica como religar.
+
 ## O que tem aqui
 
 - `firmware/device.yaml`: firmware em ESPHome para ESP32.
+- `firmware/packages/buzzer.yaml`: buzina no GPIO25 e as ações que a ligam no alarme local. A variante offline inclui `packages/buzzer_off.yaml` no lugar dele.
+- `firmware/packages/buzzer_off.yaml`: pacote vazio incluído no lugar da buzina.
 - `schema/mqtt.json`: formato de cada tópico MQTT que o dispositivo publica ou aceita.
 - `emulator/`: script que compila o QEMU com Wi-Fi para ESP32 e os patches deste repositório.
 - `server/`: servidor local. É o broker MQTT com TLS e serve a página com o gráfico.
-- `scenarios/`: roteiros que mudam temperaturas e Wi-Fi ao longo do tempo.
+- `scenarios/`: roteiros que mudam a temperatura e o Wi-Fi ao longo do tempo.
 - `test/e2e.mjs`: teste de ponta a ponta no emulador.
 - `dev`: comando que reúne tudo.
 
 ## Firmware
 
-O firmware lê três sensores DS18B20 num barramento 1-Wire no GPIO4: produto, ar e ambiente. Lê a cada 10 segundos, com resolução de 12 bits. O intervalo vai de 5 a 300 segundos e fica salvo na flash.
+O firmware lê um DS18B20 no barramento 1-Wire do GPIO4, a sonda de ar. Lê a cada 10 segundos, com resolução de 12 bits. O intervalo vai de 5 a 300 segundos e fica salvo na flash.
+
+O HC-SR04 mede a distância até a porta. O Trig fica no GPIO26 e o Echo no GPIO27, atrás de um divisor de 1 kΩ e 2 kΩ. O sensor mede a cada 100 ms. O dispositivo publica a mediana de cada segundo, em metros. Sem eco, o valor é `nan`.
+
+O estado da porta sai da distância do HC-SR04. Feche a porta e aperte "Calibrate door" na página web do dispositivo, ou publique `PRESS` em `button/calibrate_door/command`. O dispositivo mede por 3 segundos, calcula a mediana das leituras válidas e grava "Door closed distance". Com menos de 5 leituras válidas, mantém o valor antigo e registra um aviso no log. Esse valor também aceita ajuste manual e fica salvo na flash. O valor 0 significa sem calibração.
+
+"Door open" fica `ON` quando a distância passa de "Door closed distance" mais 0,05 m por 2 segundos. Um eco ausente conta como porta aberta. Volta a `OFF` depois de 1 segundo. O estado da porta só é publicado depois da calibração. A margem é a substituição `door_margin` em `firmware/device.yaml`.
 
 As leituras saem por MQTT com TLS na porta 8883. A seção "Formato dos dados" descreve os tópicos.
 
-O alarme local liga o buzzer no GPIO25 quando o produto fica acima de -12 °C por 10 minutos. Desliga 1 minuto depois de voltar. Funciona sem Wi-Fi e sem MQTT.
+O alarme local observa a sonda de ar. Publica `ON` quando o ar fica acima de -12 °C por 10 minutos e `OFF` 1 minuto depois de voltar. Funciona sem Wi-Fi e sem MQTT. Nesta variante o alarme local só publica o estado.
 
-O display OLED SSD1306 de 128x32 mostra as temperaturas, o alarme e o estado do Wi-Fi e do MQTT. O endereço do broker pode mudar pelo servidor web do dispositivo ou por MQTT. O novo endereço fica salvo na flash.
+O display OLED SSD1306 de 128x32 permanece no firmware. O I2C usa SDA no GPIO21 e SCL no GPIO22, no endereço 0x3C. A tela mostra a temperatura do ar, o alarme local, a distância e o estado da porta, e o estado do Wi-Fi e do MQTT. O endereço do broker pode mudar pelo servidor web do dispositivo ou por MQTT. O novo endereço fica salvo na flash.
 
-Para gravar numa placa real, copie `firmware/example.secrets.yaml` para `firmware/secrets.yaml` e preencha. Os códigos ROM dos sensores aparecem no log do primeiro boot.
+Para gravar numa placa real, copie `firmware/example.secrets.yaml` para `firmware/secrets.yaml` e preencha. O código ROM da sonda aparece no log do primeiro boot.
+
+## Buzina
+
+O código da buzina continua no repositório, em `firmware/packages/buzzer.yaml`. Ele define a saída no GPIO25, a chave "Buzzer" e as ações que ligam e desligam essa chave quando o alarme local muda.
+
+`firmware/device.yaml` escolhe o pacote pela substituição `buzzer_package`. A variante offline aponta para `packages/buzzer_off.yaml`. Esse pacote entra vazio: o GPIO25 fica livre e o alarme local fica só no MQTT.
+
+Para reativar a buzina, troque a substituição e grave o firmware de novo:
+
+```yaml
+buzzer_package: packages/buzzer.yaml
+```
+
+A chave volta a publicar `switch/buzzer/state` (`ON` ou `OFF`) e a aceitar `switch/buzzer/command` (`ON`, `OFF` ou `TOGGLE`). Inclua esses dois tópicos de novo em `schema/mqtt.json` para o servidor e o `./dev test` aceitarem as mensagens. O teste também recusa qualquer tópico com `buzzer` no nome. Tire essa checagem ao religar a buzina.
 
 ## Formato dos dados
 
@@ -33,22 +57,22 @@ Os tópicos do dispositivo começam com `austral/<dispositivo>/`. O payload é t
 | Tópico | Payload | Unidade | Frequência |
 | --- | --- | --- | --- |
 | `status` | `online` ou `offline` | | na conexão e na queda |
-| `sensor/product_temperature/state` | número com uma casa, ou `nan` | °C | 10 s |
 | `sensor/air_temperature/state` | número com uma casa, ou `nan` | °C | 10 s |
-| `sensor/ambient_temperature/state` | número com uma casa, ou `nan` | °C | 10 s |
+| `sensor/door_distance/state` | número com três casas, ou `nan` | m | 1 s |
 | `sensor/wifi_signal/state` | inteiro | dBm | 60 s |
 | `sensor/uptime/state` | inteiro | s | 60 s |
+| `binary_sensor/door_open/state` | `ON` ou `OFF` | | quando muda, depois da calibração |
 | `binary_sensor/local_temperature_alarm/state` | `ON` ou `OFF` | | quando muda |
-| `switch/buzzer/state` | `ON` ou `OFF` | | quando muda |
 | `text/mqtt_broker/state` | endereço do broker | | quando muda |
 | `number/read_interval/state` | número | s | quando muda |
+| `number/door_closed_distance/state` | número | m | quando muda |
 | `debug` | linha de log do dispositivo | | a cada log |
 
-`nan` indica um sensor que não respondeu. O broker publica `offline` em nome do dispositivo quando perde a conexão com ele.
+`nan` indica um sensor que não respondeu. O broker publica `offline` em nome do dispositivo quando perde a conexão com ele. `binary_sensor/door_open/state` só aparece depois da calibração.
 
 O ESPHome também publica `esphome/discover/<dispositivo>` a cada conexão, com `retain`. O payload é um JSON com os endereços IP, o MAC, a versão do ESPHome e a placa. Esse tópico fica fora do prefixo e o servidor não confere o formato dele.
 
-O dispositivo aceita três comandos: `switch/buzzer/command` (`ON`, `OFF` ou `TOGGLE`), `text/mqtt_broker/command` (novo endereço) e `number/read_interval/command` (segundos).
+O dispositivo aceita quatro comandos: `text/mqtt_broker/command` (novo endereço), `number/read_interval/command` (segundos), `number/door_closed_distance/command` (metros) e `button/calibrate_door/command` (`PRESS`).
 
 A página do servidor mostra o último payload bruto de cada tópico e se ele bate com o schema.
 
@@ -65,21 +89,21 @@ cd device
 
 O gráfico abre em http://127.0.0.1:8080. O servidor web do dispositivo emulado abre em http://127.0.0.1:18080. O log serial fica em `.local/run/device.log`. Para parar, rode `./dev down`.
 
-Com o ambiente no ar, os sensores e o Wi-Fi mudam assim:
+Com o ambiente no ar, a sonda e o Wi-Fi mudam assim:
 
 ```sh
-./dev temps -10 -15 21        # produto, ar e ambiente em °C
-./dev temps -10 -15 unplugged # o sensor de ambiente sai do barramento
-./dev wifi off                # o ponto de acesso cai
+./dev temps -21.25        # ar em °C
+./dev temps unplugged     # a sonda de ar sai do barramento
+./dev wifi off            # o ponto de acesso cai
 ./dev wifi on
-./dev scenario warm-up        # o produto passa de -12 °C e o alarme dispara
+./dev scenario warm-up    # o ar passa de -12 °C e o alarme local muda; a buzina continua desligada
 ```
 
 Os cenários prontos são `warm-up`, `sensor-unplug` e `wifi-drop`.
 
 Para testar uma mudança no firmware, edite `firmware/device.yaml` e rode `./dev ota` com o ambiente no ar. O comando compila e envia o firmware por OTA, como numa placa real. O dispositivo reinicia na versão nova sem perder a flash. `./dev build` grava uma flash nova e só roda com o dispositivo parado.
 
-`./dev test` sobe tudo e confere a conexão, a hora por SNTP, as leituras, o sensor desconectado, a volta depois de uma queda do Wi-Fi, uma atualização por OTA e o schema de todas as mensagens.
+`./dev test` sobe tudo e confere a conexão, a hora por SNTP, as leituras, a sonda desconectada, a volta depois de uma queda do Wi-Fi, uma atualização por OTA, o schema de todas as mensagens e a ausência da buzina.
 
 ## Como o emulador funciona
 
@@ -102,7 +126,7 @@ O QEMU e os patches em `emulator/patches` seguem a GPL-2.0. O restante deste dir
 
 ## Limites
 
-O ambiente virtual não emula o display OLED. O sinal do Wi-Fi é sorteado pelo emulador e não reflete distância nem obstáculos. As redes virtuais não têm senha. Ruído elétrico e falhas de alimentação não são simulados. Algumas leituras falham no 1-Wire emulado e chegam como `nan`, com mais frequência logo depois do boot.
+O ambiente virtual não emula o display OLED nem o HC-SR04. No emulador, `door_distance` fica em `nan` e a calibração falha por falta de leituras. O estado da porta não é publicado. O sinal do Wi-Fi é sorteado pelo emulador e não reflete distância nem obstáculos. As redes virtuais não têm senha. Ruído elétrico e falhas de alimentação não são simulados. Algumas leituras falham no 1-Wire emulado e chegam como `nan`, com mais frequência logo depois do boot.
 
 ## Próximos passos
 

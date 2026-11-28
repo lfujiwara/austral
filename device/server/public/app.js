@@ -1,7 +1,5 @@
 const lines = [
-  { id: 'product_temperature', label: 'Product', color: '--product', dash: [], css: 'solid' },
-  { id: 'air_temperature', label: 'Air', color: '--air', dash: [8, 5], css: 'dashed' },
-  { id: 'ambient_temperature', label: 'Ambient', color: '--ambient', dash: [2, 4], css: 'dotted' }
+  { id: 'air_temperature', label: 'Air', color: '--air', dash: [], css: 'solid' }
 ]
 const maxPoints = 4320
 const devices = Object.create(null)
@@ -47,9 +45,12 @@ function format (value, unit, digits = 1) {
 
 function renderStats (device) {
   const alarm = device.states['binary_sensor/local_temperature_alarm']
+  const door = device.states['binary_sensor/door_open']
   const cells = [
     ['Status', device.status ?? 'unknown', device.status === 'online' ? 'online' : 'offline'],
-    ...lines.map((line) => [line.label, format(latest(device.series[line.id]), ' °C')]),
+    ['Air', format(latest(device.series.air_temperature), ' °C')],
+    ['Door distance', format(latest(device.series.door_distance), ' m', 3)],
+    ['Door', door ?? 'not reported', door === 'ON' ? 'alarm' : ''],
     ['Local alarm', alarm ?? 'not reported', alarm === 'ON' ? 'alarm' : ''],
     ['Wi-Fi signal', format(latest(device.series.wifi_signal), ' dBm', 0)],
     ['Uptime', format(latest(device.series.uptime), ' s', 0)]

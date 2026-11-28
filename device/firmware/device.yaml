@@ -1,7 +1,14 @@
 substitutions:
   device_name: austral-device
   alarm_threshold: "-12.0"
+  # Meters above the closed-door baseline before the door counts as open.
+  door_margin: "0.05"
+  # Offline variant. Set this to packages/buzzer.yaml to enable the audible alarm.
+  buzzer_package: packages/buzzer_off.yaml
   default_broker: !secret mqtt_broker
+
+packages:
+  buzzer: !include ${buzzer_package}
 
 esphome:
   name: ${device_name}
@@ -10,11 +17,9 @@ esphome:
     priority: -100
     then:
       - lambda: |-
-          for (auto *s : {(PollingComponent *) id(product_temperature), (PollingComponent *) id(air_temperature), (PollingComponent *) id(ambient_temperature)}) {
-            s->stop_poller();
-            s->set_update_interval((uint32_t) id(read_interval).state * 1000);
-            s->start_poller();
-          }
+          id(air_temperature)->stop_poller();
+          id(air_temperature)->set_update_interval((uint32_t) id(read_interval).state * 1000);
+          id(air_temperature)->start_poller();
           if (id(mqtt_broker).state.size() >= 3 && id(mqtt_broker).state != "${default_broker}") {
             id(mqtt_client)->set_broker_address(id(mqtt_broker).state);
             id(mqtt_client)->disable();
@@ -26,6 +31,9 @@ esp32:
 
 logger:
   level: INFO
+  logs:
+    # A missing echo is expected and published as nan. Do not log it ten times a second.
+    ultrasonic.sensor: ERROR
 
 wifi:
   id: wifi_client
@@ -76,9 +84,11 @@ display:
     address: 0x3C
     update_interval: 2s
     lambda: |-
-      auto t = [](sensor::Sensor *s) { return s->has_state() ? str_sprintf("%.1f", s->state) : std::string("--"); };
-      it.printf(0, 0,  id(display_font), "Prod %s Air %s", t(id(product_temperature)).c_str(), t(id(air_temperature)).c_str());
-      it.printf(0, 11, id(display_font), "Amb %s  %s", t(id(ambient_temperature)).c_str(), id(local_alarm).state ? "ALARM!" : "alarm ok");
+      auto text = [](sensor::Sensor *s) { return s->has_state() ? str_sprintf("%.1f", s->state) : std::string("--"); };
+      auto meters = [](sensor::Sensor *s) { return s->has_state() ? str_sprintf("%.2f", s->state) : std::string("--"); };
+      const char *door = id(door_open).has_state() ? (id(door_open).state ? "open" : "shut") : "--";
+      it.printf(0, 0, id(display_font), "Air %s %s", text(id(air_temperature)).c_str(), id(local_alarm).state ? "ALARM!" : "ok");
+      it.printf(0, 11, id(display_font), "Door %s %s", meters(id(door_distance)).c_str(), door);
       it.printf(0, 22, id(display_font), "WiFi %s  MQTT %s", id(wifi_client).is_connected() ? "ok" : "--", id(mqtt_client)->is_connected() ? "ok" : "--");
 
 one_wire:
@@ -89,25 +99,9 @@ one_wire:
 sensor:
   - platform: dallas_temp
     one_wire_id: one_wire_bus
-    address: !secret product_sensor_address
-    name: "Product temperature"
-    id: product_temperature
-    resolution: 12
-    update_interval: 10s
-
-  - platform: dallas_temp
-    one_wire_id: one_wire_bus
     address: !secret air_sensor_address
     name: "Air temperature"
     id: air_temperature
-    resolution: 12
-    update_interval: 10s
-
-  - platform: dallas_temp
-    one_wire_id: one_wire_bus
-    address: !secret ambient_sensor_address
-    name: "Ambient temperature"
-    id: ambient_temperature
     resolution: 12
     update_interval: 10s
 
@@ -119,16 +113,57 @@ sensor:
     name: "Uptime"
     update_interval: 60s
 
-output:
-  - platform: gpio
-    pin: GPIO25
-    id: buzzer_output
+  # HC-SR04: Trig on GPIO26, Echo on GPIO27 through a 1k/2k divider.
+  # Raw reads every 100 ms feed the calibration. Published once a second as the median of those 10 reads.
+  - platform: ultrasonic
+    trigger_pin: GPIO26
+    echo_pin: GPIO27
+    name: "Door distance"
+    id: door_distance
+    update_interval: 100ms
+    accuracy_decimals: 3
+    filters:
+      - median:
+          window_size: 10
+          send_every: 10
+    on_raw_value:
+      - lambda: |-
+          if (id(calibrating) && !std::isnan(x) && x > 0) id(calibration_samples).push_back(x);
 
-switch:
-  - platform: output
-    output: buzzer_output
-    name: "Buzzer"
-    id: buzzer
+globals:
+  - id: calibrating
+    type: bool
+    initial_value: "false"
+  - id: calibration_samples
+    type: std::vector<float>
+
+script:
+  - id: calibrate_door
+    mode: single
+    then:
+      - lambda: |-
+          id(calibration_samples).clear();
+          id(calibrating) = true;
+      - delay: 3s
+      - lambda: |-
+          id(calibrating) = false;
+          auto &samples = id(calibration_samples);
+          if (samples.size() < 5) {
+            ESP_LOGW("calibrate", "Door calibration failed: %u valid samples, need 5. Baseline unchanged.", (unsigned) samples.size());
+            return;
+          }
+          std::sort(samples.begin(), samples.end());
+          float median = samples.size() % 2 ? samples[samples.size() / 2] : (samples[samples.size() / 2 - 1] + samples[samples.size() / 2]) / 2;
+          ESP_LOGI("calibrate", "Door closed distance %.3f m from %u samples", median, (unsigned) samples.size());
+          id(door_closed_distance).make_call().set_value(median).perform();
+          samples.clear();
+
+button:
+  - platform: template
+    name: "Calibrate door"
+    id: calibrate_door_button
+    on_press:
+      - script.execute: calibrate_door
 
 text:
   - platform: template
@@ -159,22 +194,41 @@ number:
     optimistic: true
     set_action:
       - lambda: |-
-          for (auto *s : {(PollingComponent *) id(product_temperature), (PollingComponent *) id(air_temperature), (PollingComponent *) id(ambient_temperature)}) {
-            s->stop_poller();
-            s->set_update_interval((uint32_t) x * 1000);
-            s->start_poller();
-          }
+          id(air_temperature)->stop_poller();
+          id(air_temperature)->set_update_interval((uint32_t) x * 1000);
+          id(air_temperature)->start_poller();
+
+  - platform: template
+    name: "Door closed distance"
+    id: door_closed_distance
+    unit_of_measurement: m
+    min_value: 0
+    max_value: 4
+    step: 0.001
+    mode: box
+    initial_value: 0
+    restore_value: true
+    optimistic: true
 
 binary_sensor:
+  - platform: template
+    name: "Door open"
+    id: door_open
+    device_class: door
+    lambda: |-
+      float closed = id(door_closed_distance).state;
+      if (std::isnan(closed) || closed <= 0 || !id(door_distance).has_state()) return {};
+      float distance = id(door_distance).state;
+      return std::isnan(distance) || distance > closed + ${door_margin};
+    filters:
+      - delayed_on: 2s
+      - delayed_off: 1s
+
   - platform: template
     name: "Local temperature alarm"
     id: local_alarm
     lambda: |-
-      return id(product_temperature).has_state() && id(product_temperature).state > ${alarm_threshold};
+      return id(air_temperature).has_state() && id(air_temperature).state > ${alarm_threshold};
     filters:
       - delayed_on: 10min
       - delayed_off: 1min
-    on_press:
-      - switch.turn_on: buzzer
-    on_release:
-      - switch.turn_off: buzzer

@@ -9,25 +9,18 @@
       "description": "online when the device connects. offline when it shuts down cleanly or when the broker loses it (last will)."
     },
     {
-      "topic": "sensor/product_temperature/state",
-      "pattern": "^(-?\\d+\\.\\d|nan)$",
-      "unit": "°C",
-      "every_seconds": 10,
-      "description": "Product probe, one decimal. nan when the probe does not answer."
-    },
-    {
       "topic": "sensor/air_temperature/state",
       "pattern": "^(-?\\d+\\.\\d|nan)$",
       "unit": "°C",
       "every_seconds": 10,
-      "description": "Cabinet air probe, one decimal. nan when the probe does not answer."
+      "description": "Air probe, one decimal. nan when the probe does not answer."
     },
     {
-      "topic": "sensor/ambient_temperature/state",
-      "pattern": "^(-?\\d+\\.\\d|nan)$",
-      "unit": "°C",
-      "every_seconds": 10,
-      "description": "Room probe, one decimal. nan when the probe does not answer."
+      "topic": "sensor/door_distance/state",
+      "pattern": "^(\\d+\\.\\d{3}|nan)$",
+      "unit": "m",
+      "every_seconds": 1,
+      "description": "HC-SR04 median over 1 s. Trig GPIO26, echo GPIO27. nan when the echo does not arrive."
     },
     {
       "topic": "sensor/wifi_signal/state",
@@ -44,15 +37,16 @@
       "description": "Seconds since boot. Drops back after a reboot or an OTA update."
     },
     {
+      "topic": "binary_sensor/door_open/state",
+      "pattern": "^(ON|OFF)$",
+      "at_boot": false,
+      "description": "Derived from door_distance, not a separate switch. ON after the distance stays above the closed baseline plus 0.05 m for 2 seconds, or the echo is missing. OFF 1 second after it returns. Published only once the closed distance is above 0."
+    },
+    {
       "topic": "binary_sensor/local_temperature_alarm/state",
       "pattern": "^(ON|OFF)$",
       "at_boot": false,
-      "description": "ON after the product stays above -12 °C for 10 minutes. OFF 1 minute after it drops back. Published only when it changes."
-    },
-    {
-      "topic": "switch/buzzer/state",
-      "pattern": "^(ON|OFF)$",
-      "description": "Buzzer output on GPIO25. Follows the local alarm unless commanded."
+      "description": "ON after the air stays above -12 °C for 10 minutes. OFF 1 minute after it drops back. Published only when it changes. Does not drive the buzzer in this variant."
     },
     {
       "topic": "text/mqtt_broker/state",
@@ -63,7 +57,13 @@
       "topic": "number/read_interval/state",
       "pattern": "^(5|[1-9][05]|[12]\\d[05]|300)\\.0+$",
       "unit": "s",
-      "description": "Probe polling interval, 5 to 300 in steps of 5. Stored in flash."
+      "description": "Air probe polling interval, 5 to 300 in steps of 5. Stored in flash."
+    },
+    {
+      "topic": "number/door_closed_distance/state",
+      "pattern": "^(?:[0-3](?:\\.\\d+)?|4(?:\\.0+)?)$",
+      "unit": "m",
+      "description": "Calibrated distance of the closed door. Stored in flash. 0 means not calibrated."
     },
     {
       "topic": "debug",
@@ -73,11 +73,6 @@
   ],
   "commands": [
     {
-      "topic": "switch/buzzer/command",
-      "pattern": "^(ON|OFF|TOGGLE)$",
-      "description": "Turns the buzzer on or off."
-    },
-    {
       "topic": "text/mqtt_broker/command",
       "pattern": "^\\S{3,64}$",
       "description": "Changes the broker address and reconnects. Stored in flash."
@@ -85,7 +80,17 @@
     {
       "topic": "number/read_interval/command",
       "pattern": "^(5|[1-9][05]|[12]\\d[05]|300)(\\.0+)?$",
-      "description": "Changes the probe polling interval in seconds, 5 to 300 in steps of 5. Stored in flash."
+      "description": "Changes the air probe polling interval in seconds, 5 to 300 in steps of 5. Stored in flash."
+    },
+    {
+      "topic": "number/door_closed_distance/command",
+      "pattern": "^(?:[0-3](?:\\.\\d+)?|4(?:\\.0+)?)$",
+      "description": "Sets the closed-door distance in meters, 0 to 4. Stored in flash. 0 clears the calibration."
+    },
+    {
+      "topic": "button/calibrate_door/command",
+      "pattern": "^PRESS$",
+      "description": "Measures the closed door for 3 seconds and stores the median when at least 5 valid samples arrive."
     }
   ],
   "outside_prefix": [

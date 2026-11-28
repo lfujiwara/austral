@@ -17,9 +17,7 @@ dependency_cutoff="2026-11-03"
 http_port="${AUSTRAL_HTTP_PORT:-8080}"
 device_web_port="${AUSTRAL_DEVICE_WEB_PORT:-18080}"
 
-product_rom="0xD8A1000000000128"
 air_rom="0x81A1000000000228"
-ambient_rom="0xB6A1000000000328"
 
 usage() {
   cat <<EOF
@@ -32,7 +30,7 @@ usage: ./dev <command>
   down               stop them
   server             run the server in the foreground
   emulate            run the emulated device in the foreground
-  temps P A M        set product, air and ambient temperatures (°C, or "unplugged")
+  temps T            set the air temperature (°C, or "unplugged")
   wifi on|off        switch the emulated access points
   scenario NAME      run scenarios/NAME.sh (warm-up, sensor-unplug, wifi-drop)
   test               end-to-end test in the emulator
@@ -85,19 +83,16 @@ load_credentials() {
 
 set_temps() {
   mkdir -p "$control_dir"
-  local file="$control_dir/temperatures.txt" rom value
+  local file="$control_dir/temperatures.txt" value="$1"
   : > "$file.next"
-  for pair in "$product_rom:$1" "$air_rom:$2" "$ambient_rom:$3"; do
-    rom="${pair%%:*}"
-    value="${pair#*:}"
-    [ "$value" = "unplugged" ] && continue
+  if [ "$value" != "unplugged" ]; then
     if ! [[ "$value" =~ ^-?[0-9]+(\.[0-9]+)?$ ]] || ! awk -v t="$value" 'BEGIN { exit !(t >= -55 && t <= 125) }'; then
       echo "temperature must be between -55 and 125 °C, or unplugged: $value" >&2
       rm -f "$file.next"
       exit 1
     fi
-    echo "$rom $value" >> "$file.next"
-  done
+    echo "$air_rom $value" >> "$file.next"
+  fi
   mv "$file.next" "$file"
 }
 
@@ -133,6 +128,8 @@ compile_firmware() {
   load_credentials
   mkdir -p "$firmware_dir"
   cp "$root/firmware/device.yaml" "$firmware_dir/device.yaml"
+  mkdir -p "$firmware_dir/packages"
+  cp "$root/firmware/packages/"*.yaml "$firmware_dir/packages/"
   cat > "$firmware_dir/emulator.yaml" <<'EOF'
 packages:
   device: !include device.yaml
@@ -148,9 +145,7 @@ EOF
     echo 'mqtt_broker: "192.168.4.2"'
     echo "mqtt_username: \"$AUSTRAL_MQTT_USERNAME\""
     echo "mqtt_password: \"$AUSTRAL_MQTT_PASSWORD\""
-    echo "product_sensor_address: \"$product_rom\""
     echo "air_sensor_address: \"$air_rom\""
-    echo "ambient_sensor_address: \"$ambient_rom\""
     echo 'mqtt_ca: |'
     sed 's/^/  /' "$tls_dir/ca.pem"
   } > "$firmware_dir/secrets.yaml"
@@ -171,7 +166,7 @@ cmd_build() {
 }
 
 ensure_control() {
-  [ -f "$control_dir/temperatures.txt" ] || set_temps -23.5 -21.25 21.0
+  [ -f "$control_dir/temperatures.txt" ] || set_temps -21.25
   [ -f "$control_dir/wifi.txt" ] || set_wifi on
 }
 
@@ -276,7 +271,7 @@ case "$command" in
   down) cmd_down ;;
   server) cmd_server ;;
   emulate) cmd_emulate ;;
-  temps) [ $# -eq 3 ] || { usage; exit 1; }; set_temps "$@" ;;
+  temps) [ $# -eq 1 ] || { usage; exit 1; }; set_temps "$1" ;;
   wifi) [ $# -eq 1 ] || { usage; exit 1; }; set_wifi "$1" ;;
   scenario) cmd_scenario "$@" ;;
   test) exec node "$root/test/e2e.mjs" ;;

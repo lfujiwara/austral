@@ -1,0 +1,19 @@
+# Audible alarm. The offline variant does not load this package.
+# Set buzzer_package in device.yaml to packages/buzzer.yaml to enable it.
+output:
+  - platform: gpio
+    pin: GPIO25
+    id: buzzer_output
+
+switch:
+  - platform: output
+    output: buzzer_output
+    name: "Buzzer"
+    id: buzzer
+
+binary_sensor:
+  - id: !extend local_alarm
+    on_press:
+      - switch.turn_on: buzzer
+    on_release:
+      - switch.turn_off: buzzer

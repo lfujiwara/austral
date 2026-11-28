@@ -1,0 +1,3 @@
+# Offline variant. This package is intentionally empty.
+# Set buzzer_package in device.yaml to packages/buzzer.yaml to load the audible alarm.
+{}

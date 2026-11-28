@@ -10,7 +10,7 @@
       color-scheme: light;
       --ink: #163f35; --paper: #f5f8f3; --muted: #4f685e; --accent: #d7f39b; --line: #cedbd0;
       --chat: #edf3e8; --focus: #668f31; --white: #ffffff; --warn: #9a3b1d;
-      --product: #163f35; --air: #668f31; --ambient: #4f685e;
+      --air: #668f31;
     }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.6 Manrope, sans-serif;
@@ -81,8 +81,8 @@
     </header>
     <section class="panel stats" id="stats" aria-live="polite"><p class="empty">Waiting for MQTT messages.</p></section>
     <section class="panel">
-      <h2>Temperatures</h2>
-      <canvas id="chart" role="img" aria-label="Product, air and ambient temperature over time"></canvas>
+      <h2>Temperature</h2>
+      <canvas id="chart" role="img" aria-label="Air temperature over time"></canvas>
       <div class="legend" id="legend"></div>
     </section>
     <section class="panel">

@@ -44,45 +44,45 @@ async function checkSchema () {
   const seen = (await (await fetch(`${base}/api/messages`)).json())['austral-device'] ?? {}
   const missing = schema.published.filter((entry) => entry.at_boot !== false && seen[entry.topic]?.valid !== true)
   const offSchema = Object.entries(seen).filter(([, message]) => message.invalid > 0)
-  if (missing.length || offSchema.length) {
+  const buzzer = Object.keys(seen).filter((topic) => topic.toLowerCase().includes('buzzer'))
+  if (missing.length || offSchema.length || buzzer.length) {
     throw new Error(`schema: missing or invalid ${JSON.stringify(missing.map((entry) => entry.topic))}, ` +
-      `off schema ${JSON.stringify(offSchema.map(([topic, message]) => [topic, message.invalid, message.payload]))}`)
+      `off schema ${JSON.stringify(offSchema.map(([topic, message]) => [topic, message.invalid, message.payload]))}, ` +
+      `buzzer ${JSON.stringify(buzzer)}`)
   }
-  console.log(`ok  every message matches schema/mqtt.json (${Object.keys(seen).length} topics)`)
+  console.log(`ok  every message matches schema/mqtt.json (${Object.keys(seen).length} topics, buzzer disabled)`)
 }
 
 let failed = false
 try {
   run('down')
   run('build')
-  run('temps', '-23.5', '-21.25', '21.0')
+  run('temps', '-21.25')
   run('wifi', 'on')
   run('up')
 
   await waitFor('device connects to the broker', async () => (await device())?.status === 'online', 180_000)
   await waitFor('clock synchronized over SNTP', () => readFileSync(deviceLog, 'utf8').includes('Synchronized time'), 120_000)
-  await waitFor('product reads -23.5 °C', reads('product_temperature', -23.5), 60_000)
   await waitFor('air reads -21.2 °C', reads('air_temperature', -21.2), 60_000)
-  await waitFor('ambient reads 21 °C', reads('ambient_temperature', 21), 60_000)
 
-  run('temps', '-10', '-21.25', '21.0')
-  await waitFor('product follows the injected -10 °C', reads('product_temperature', -10), 60_000)
-  run('temps', '85', '-21.25', '21.0')
-  await waitFor('a real 85 °C reading is not taken for the power-on value', reads('product_temperature', 85), 60_000)
-  run('temps', '-10', '-21.25', '21.0')
+  run('temps', '-10')
+  await waitFor('air follows the injected -10 °C', reads('air_temperature', -10), 60_000)
+  run('temps', '85')
+  await waitFor('a real 85 °C reading is not taken for the power-on value', reads('air_temperature', 85), 60_000)
+  run('temps', '-10')
 
-  run('temps', '-10', '-21.25', 'unplugged')
-  await waitFor('unplugged ambient probe reads as missing', reads('ambient_temperature', null), 60_000)
-  run('temps', '-10', '-21.25', '21.0')
-  await waitFor('ambient probe reads again after replug', reads('ambient_temperature', 21), 60_000)
+  run('temps', 'unplugged')
+  await waitFor('unplugged air probe reads as missing', reads('air_temperature', null), 60_000)
+  run('temps', '-21.25')
+  await waitFor('air probe reads again after replug', reads('air_temperature', -21.2), 60_000)
 
   run('wifi', 'off')
   await waitFor('broker marks the device offline', async () => (await device())?.status === 'offline', 120_000)
-  const lastBeforeReconnect = latest(await device(), 'product_temperature')[0]
+  const lastBeforeReconnect = latest(await device(), 'air_temperature')[0]
   run('wifi', 'on')
   await waitFor('device reconnects after the Wi-Fi returns', async () => (await device())?.status === 'online', 300_000)
   await waitFor('readings resume after reconnecting', async () => {
-    const reading = latest(await device(), 'product_temperature')
+    const reading = latest(await device(), 'air_temperature')
     return reading && reading[0] > lastBeforeReconnect
   }, 60_000)
 
@@ -92,7 +92,7 @@ try {
   await waitFor('device reboots into the OTA image', () => boots() > bootsBefore, 120_000)
   await waitFor('device is back online after the OTA reboot', async () => {
     const state = await device()
-    return state?.status === 'online' && latest(state, 'product_temperature')?.[0] > otaStarted
+    return state?.status === 'online' && latest(state, 'air_temperature')?.[0] > otaStarted
   }, 180_000)
 
   await checkSchema()
