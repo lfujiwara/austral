@@ -124,7 +124,8 @@ bool DallasTemperatureSensor::check_scratch_pad_() {
 #endif
   if (!chksum_validity) {
     this->status_set_warning(LOG_STR("scratch pad checksum invalid"));
-    ESP_LOGD(TAG, "Scratch pad: %02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X (%02X)", this->scratch_pad_[0],
+    // Austral: upstream logs this at DEBUG. WARN keeps it visible at the INFO log level and in the MQTT log topic.
+    ESP_LOGW(TAG, "Scratch pad: %02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X (%02X)", this->scratch_pad_[0],
              this->scratch_pad_[1], this->scratch_pad_[2], this->scratch_pad_[3], this->scratch_pad_[4],
              this->scratch_pad_[5], this->scratch_pad_[6], this->scratch_pad_[7], this->scratch_pad_[8],
              crc8(this->scratch_pad_, 8));

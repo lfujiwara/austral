@@ -31,6 +31,14 @@ esphome:
 esp32:
   board: esp32dev
 
+# Local copy of the ESPHome dallas_temp component. It differs from upstream in one line: the scratch pad
+# bytes of a failed checksum are logged at WARN instead of DEBUG. See components/dallas_temp/dallas_temp.cpp.
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [dallas_temp]
+
 logger:
   level: INFO
   logs:

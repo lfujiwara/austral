@@ -153,6 +153,8 @@ compile_firmware() {
   cp "$root/firmware/device.yaml" "$firmware_dir/device.yaml"
   mkdir -p "$firmware_dir/packages"
   cp "$root/firmware/packages/"*.yaml "$firmware_dir/packages/"
+  rm -rf "$firmware_dir/components"
+  cp -R "$root/firmware/components" "$firmware_dir/components"
   cat > "$firmware_dir/emulator.yaml" <<'EOF'
 packages:
   device: !include device.yaml
