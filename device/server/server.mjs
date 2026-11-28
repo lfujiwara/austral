@@ -5,7 +5,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { join } from 'node:path'
 import { Aedes } from 'aedes'
 
-const host = '127.0.0.1'
+const bindHost = process.env.AUSTRAL_BIND ?? '127.0.0.1'
 const mqttPort = 8883
 const httpPort = Number(process.env.AUSTRAL_HTTP_PORT ?? 8080)
 const tlsDir = required('AUSTRAL_TLS_DIR')
@@ -125,8 +125,8 @@ const [cert, key] = await Promise.all([
   readFile(join(tlsDir, 'server.pem')),
   readFile(join(tlsDir, 'server.key'))
 ])
-createTlsServer({ cert, key }, broker.handle).listen(mqttPort, host, () => {
-  console.log(`mqtt broker on mqtts://${host}:${mqttPort}`)
+createTlsServer({ cert, key }, broker.handle).listen(mqttPort, bindHost, () => {
+  console.log(`mqtt broker on mqtts://${bindHost}:${mqttPort}`)
 })
 
 const pages = {
@@ -136,6 +136,10 @@ const pages = {
 }
 
 const allowedHosts = new Set([`127.0.0.1:${httpPort}`, `localhost:${httpPort}`])
+for (const name of (process.env.AUSTRAL_LAN_HOSTS ?? '').split(',')) {
+  const trimmed = name.trim().toLowerCase()
+  if (trimmed) allowedHosts.add(trimmed.includes(':') ? trimmed : `${trimmed}:${httpPort}`)
+}
 
 createHttpServer(async (request, response) => {
   try {
@@ -144,12 +148,12 @@ createHttpServer(async (request, response) => {
     if (!response.headersSent) response.writeHead(500)
     response.end()
   }
-}).listen(httpPort, host, () => {
-  console.log(`chart on http://${host}:${httpPort}`)
+}).listen(httpPort, bindHost, () => {
+  console.log(`chart on http://${bindHost}:${httpPort}`)
 })
 
 async function serve (request, response) {
-  if (!allowedHosts.has(request.headers.host)) {
+  if (!allowedHosts.has((request.headers.host ?? '').toLowerCase())) {
     response.writeHead(421).end()
     return
   }

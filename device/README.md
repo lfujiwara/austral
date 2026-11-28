@@ -14,7 +14,7 @@ Esta branch é a variante offline. A buzina fica fora do firmware que a placa ro
 - `server/`: servidor local. É o broker MQTT com TLS e serve a página com o gráfico.
 - `scenarios/`: roteiros que mudam a temperatura e o Wi-Fi ao longo do tempo.
 - `test/e2e.mjs`: teste de ponta a ponta no emulador.
-- `dev`: comando que reúne tudo.
+- `dev`: comando que reúne tudo. `./dev lan` prepara o broker TLS na rede de casa.
 
 ## Firmware
 
@@ -32,7 +32,7 @@ O alarme local observa a sonda de ar. O limite padrão é 5,0 °C. A entidade "A
 
 O display OLED SSD1306 de 128x32 permanece no firmware. O I2C usa SDA no GPIO21 e SCL no GPIO22, no endereço 0x3C. A tela mostra a temperatura do ar, o alarme local, a distância e o estado da porta, e o estado do Wi-Fi e do MQTT. O endereço do broker pode mudar pelo servidor web do dispositivo ou por MQTT. O novo endereço fica salvo na flash.
 
-Para gravar numa placa real, copie `firmware/example.secrets.yaml` para `firmware/secrets.yaml` e preencha. O código ROM da sonda aparece no log do primeiro boot.
+Para gravar numa placa real na rede de casa, siga a seção "Rede de casa no Mac". O código ROM da sonda aparece no log do primeiro boot.
 
 ## Buzina
 
@@ -76,6 +76,44 @@ O ESPHome também publica `esphome/discover/<dispositivo>` a cada conexão, com 
 O dispositivo aceita cinco comandos: `text/mqtt_broker/command` (novo endereço), `number/read_interval/command` (segundos), `number/door_closed_distance/command` (metros), `number/alarm_threshold/command` (°C, de -40 a 40) e `button/calibrate_door/command` (`PRESS`).
 
 A página do servidor mostra o último payload bruto de cada tópico e se ele bate com o schema.
+
+## Rede de casa no Mac
+
+O broker MQTT com TLS escuta na rede de casa e aceita a placa. O certificado inclui o IP do Mac e o nome `.local`. O usuário e a senha ficam em `.local/credentials.env` e em `firmware/secrets.yaml`. O comando não imprime esses valores.
+
+A placa precisa estar no Wi-Fi de 2,4 GHz, o mesmo do Mac. Se o IP do Mac mudar, rode `./dev lan prepare` de novo e grave o firmware outra vez. O firewall do macOS pode pedir permissão para o Node receber conexões. Permita.
+
+Requisitos: Node 20.11 ou mais novo, Python 3 e `openssl`. O `openssl` já vem no macOS.
+
+Rodar `./dev lan prepare` de novo mantém o mesmo usuário e a mesma senha.
+
+```sh
+cd device
+./dev lan prepare
+```
+
+Se o comando pedir o Wi-Fi, digite o nome da rede e a senha. A senha não aparece na tela. Se ele avisar que faltam `wifi_ssid` e `wifi_password`, preencha os dois em `firmware/secrets.yaml` e não copie esse arquivo para outro lugar.
+
+Instale o ESPHome usado por este repositório e grave a placa, ligada por USB:
+
+```sh
+cd device
+python3 -m venv .local/venv
+.local/venv/bin/pip install 'esphome==2026.9.1'
+cd firmware
+../.local/venv/bin/esphome run device.yaml
+```
+
+Em outro terminal, suba o broker e o gráfico:
+
+```sh
+cd device
+./dev lan serve
+```
+
+O comando mostra o IP, a porta 8883 e o endereço do gráfico, no formato `http://<ip>:8080`. O nome `.local` também está no certificado. O `secrets.yaml` usa o IP, que é o endereço que a placa disca.
+
+`./dev up` continua só em `127.0.0.1`, para o emulador. `./dev lan serve` escuta na rede de casa.
 
 ## Ambiente virtual
 
