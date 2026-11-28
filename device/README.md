@@ -13,7 +13,7 @@ Esta branch é a variante offline. A buzina e a tela ficam fora do firmware que 
 - `firmware/packages/display_off.yaml`: pacote vazio incluído no lugar da tela.
 - `schema/mqtt.json`: formato de cada tópico MQTT que o dispositivo publica ou aceita.
 - `emulator/`: script que compila o QEMU com Wi-Fi para ESP32 e os patches deste repositório.
-- `server/`: servidor local. É o broker MQTT com TLS e serve a página com o gráfico.
+- `server/`: servidor local. É o broker MQTT com TLS, serve a página com o gráfico e grava o histórico das leituras em `.local/data/`.
 - `scenarios/`: roteiros que mudam a temperatura e o Wi-Fi ao longo do tempo.
 - `test/e2e.mjs`: teste de ponta a ponta no emulador.
 - `dev`: comando que reúne tudo. `./dev lan` prepara o broker TLS na rede de casa.
@@ -99,6 +99,16 @@ O ESPHome também publica `esphome/discover/<dispositivo>` a cada conexão, com 
 O dispositivo aceita cinco comandos: `text/mqtt_broker/command` (novo endereço), `number/read_interval/command` (segundos), `number/door_closed_distance/command` (metros), `number/alarm_threshold/command` (°C, de -40 a 40) e `button/calibrate_door/command` (`PRESS`).
 
 A página do servidor mostra o último payload bruto de cada tópico e se ele bate com o schema.
+
+## Histórico das leituras
+
+O servidor grava cada leitura numérica num arquivo neste Mac, em `.local/data/readings-YYYY-MM-DD.jsonl`. A data do arquivo segue o fuso America/Sao_Paulo. A pasta `.local/` fica fora do git. Entram todos os sensores numéricos, por exemplo a temperatura do ar, a distância da porta, o sinal do Wi-Fi e o tempo ligado. Cada linha é um JSON:
+
+```json
+{"t":"2026-11-28T04:30:00.123-03:00","ms":1764315000123,"device":"austral-device","sensor":"air_temperature","value":22.8}
+```
+
+`t` é o instante com o fuso de Brasília. `value` é o número, ou `null` quando o sensor não respondeu (`nan`). O arquivo acumula o dia inteiro, sem o limite do gráfico. O painel continua usando um buffer em memória das últimas 4.320 leituras de cada sensor. Ao subir, o servidor recarrega do arquivo do dia as últimas 4.320 de cada um, para o gráfico não nascer vazio.
 
 ## Rede de casa no Mac
 
@@ -195,7 +205,7 @@ O QEMU roda com `-icount`. Sem isso, o 1-Wire perde a sincronia.
 
 O build do ambiente virtual inclui `device.yaml` e muda só o nível de log para DEBUG. O firmware é o mesmo da placa.
 
-O servidor e o emulador escutam só em `127.0.0.1`. Certificados, senhas e o firmware compilado ficam em `.local/`, fora do git.
+O servidor e o emulador escutam só em `127.0.0.1`. Certificados, senhas, o firmware compilado e o histórico das leituras ficam em `.local/`, fora do git.
 
 ## Licenças
 

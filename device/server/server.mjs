@@ -1,5 +1,6 @@
 import { createServer as createTlsServer } from 'node:tls'
 import { createServer as createHttpServer } from 'node:http'
+import { createWriteStream, mkdirSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { timingSafeEqual } from 'node:crypto'
 import { join } from 'node:path'
@@ -14,6 +15,8 @@ const username = required('AUSTRAL_MQTT_USERNAME')
 const password = Buffer.from(required('AUSTRAL_MQTT_PASSWORD'))
 const publicDir = join(import.meta.dirname, 'public')
 const schemaFile = join(import.meta.dirname, '..', 'schema', 'mqtt.json')
+const dataDir = join(import.meta.dirname, '..', '.local', 'data')
+const timeZone = 'America/Sao_Paulo'
 const maxPoints = 4320
 const maxDevices = 32
 const maxTopicsPerDevice = 128
@@ -44,6 +47,17 @@ const identifier = /^[a-z0-9_-]{1,64}$/
 const listeners = new Set()
 const schema = JSON.parse(await readFile(schemaFile, 'utf8'))
 const patterns = new Map([...schema.published, ...schema.commands].map((entry) => [entry.topic, new RegExp(entry.pattern)]))
+const clock = new Intl.DateTimeFormat('en-US', {
+  timeZone,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  fractionalSecondDigits: 3,
+  hourCycle: 'h23'
+})
 
 function device (id) {
   if (!devices.has(id)) devices.set(id, { status: null, series: Object.create(null), states: Object.create(null), probeFailures: [] })
@@ -80,6 +94,100 @@ function parseProbeFailure (payload, at) {
 function broadcast (event) {
   const line = `data: ${JSON.stringify(event)}\n\n`
   for (const response of listeners) response.write(line)
+}
+
+function timeParts (ms) {
+  const parts = Object.create(null)
+  for (const part of clock.formatToParts(new Date(ms))) {
+    if (part.type !== 'literal') parts[part.type] = part.value
+  }
+  return {
+    year: parts.year,
+    month: (parts.month ?? '').padStart(2, '0'),
+    day: (parts.day ?? '').padStart(2, '0'),
+    hour: (parts.hour ?? '').padStart(2, '0'),
+    minute: (parts.minute ?? '').padStart(2, '0'),
+    second: (parts.second ?? '').padStart(2, '0'),
+    fractionalSecond: (parts.fractionalSecond ?? '0').padEnd(3, '0').slice(0, 3)
+  }
+}
+
+function isoSaoPaulo (ms) {
+  const p = timeParts(ms)
+  const asUtc = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second, +p.fractionalSecond)
+  const offsetMin = Math.round((asUtc - ms) / 60000)
+  const sign = offsetMin >= 0 ? '+' : '-'
+  const abs = Math.abs(offsetMin)
+  const hh = String(Math.floor(abs / 60)).padStart(2, '0')
+  const mm = String(abs % 60).padStart(2, '0')
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}.${p.fractionalSecond}${sign}${hh}:${mm}`
+}
+
+function dayKey (ms) {
+  const p = timeParts(ms)
+  return `${p.year}-${p.month}-${p.day}`
+}
+
+let logDay = null
+/** @type {import('node:fs').WriteStream | null} */
+let logStream = null
+
+function appendReading (deviceId, sensor, value, at) {
+  const day = dayKey(at)
+  if (logDay !== day || !logStream) {
+    const previous = logStream
+    logStream = null
+    logDay = null
+    previous?.end()
+    try {
+      mkdirSync(dataDir, { recursive: true, mode: 0o700 })
+      const stream = createWriteStream(join(dataDir, `readings-${day}.jsonl`), { flags: 'a', mode: 0o600 })
+      stream.on('error', (error) => {
+        console.error('failed to write readings log:', error.message)
+        if (logStream === stream) {
+          logStream = null
+          logDay = null
+        }
+      })
+      logStream = stream
+      logDay = day
+    } catch (error) {
+      console.error('failed to write readings log:', error.message)
+      return
+    }
+  }
+  logStream.write(`${JSON.stringify({ t: isoSaoPaulo(at), ms: at, device: deviceId, sensor, value })}\n`)
+}
+
+async function loadToday () {
+  const path = join(dataDir, `readings-${dayKey(Date.now())}.jsonl`)
+  let text
+  try {
+    text = await readFile(path, 'utf8')
+  } catch (error) {
+    if (error.code !== 'ENOENT') console.error('failed to load readings log:', error.message)
+    return
+  }
+  for (const line of text.split('\n')) {
+    if (!line) continue
+    let row
+    try {
+      row = JSON.parse(line)
+    } catch {
+      continue
+    }
+    if (!identifier.test(row.device ?? '') || !identifier.test(row.sensor ?? '')) continue
+    if (!Number.isFinite(row.ms)) continue
+    const value = row.value === null ? null : row.value
+    if (value !== null && !Number.isFinite(value)) continue
+    const series = (device(row.device).series[row.sensor] ??= [])
+    series.push([row.ms, value])
+  }
+  for (const entry of devices.values()) {
+    for (const series of Object.values(entry.series)) {
+      if (series.length > maxPoints) series.splice(0, series.length - maxPoints)
+    }
+  }
 }
 
 function recordMessage (topic, payload, at) {
@@ -128,6 +236,7 @@ function record (topic, payload, at) {
     const series = (entry.series[id] ??= [])
     series.push([at, value])
     if (series.length > maxPoints) series.splice(0, series.length - maxPoints)
+    appendReading(parsed.device, id, value, at)
     event = { device: parsed.device, kind: 'sensor', id, value, at }
   } else {
     entry.states[parsed.id] = payload
@@ -135,6 +244,8 @@ function record (topic, payload, at) {
   }
   broadcast(event)
 }
+
+await loadToday()
 
 const broker = await Aedes.createBroker()
 broker.authenticate = (client, user, pass, done) => {
