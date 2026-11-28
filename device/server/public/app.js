@@ -1,5 +1,6 @@
 const lines = [
-  { id: 'air_temperature', label: 'Air', color: '--air', dash: [], css: 'solid' }
+  { id: 'air_temperature', label: 'Air', color: '--air', dash: [], css: 'solid', axis: 'left', unit: '°C', digits: 1, minSpan: 2 },
+  { id: 'door_distance', label: 'Door distance', color: '--distance', dash: [6, 4], css: 'dashed', axis: 'right', unit: 'm', digits: 2, minSpan: 0.2 }
 ]
 const maxPoints = 4320
 const maxProbeFailures = 20
@@ -64,6 +65,19 @@ function renderStats (device) {
     .join('')
 }
 
+function axisRange (points, minSpan) {
+  const values = points.map(([, value]) => value).filter((value) => value != null)
+  if (!values.length) return null
+  let low = Math.min(...values)
+  let high = Math.max(...values)
+  if (high - low < minSpan) {
+    const mid = (high + low) / 2
+    low = mid - minSpan / 2
+    high = mid + minSpan / 2
+  }
+  return { low, high }
+}
+
 function renderChart (device) {
   const style = getComputedStyle(document.documentElement)
   const scale = window.devicePixelRatio || 1
@@ -79,29 +93,46 @@ function renderChart (device) {
   const start = end - Number(windowSelect.value)
   const visible = lines.map((line) => ({
     ...line,
-    points: (device.series[line.id] ?? []).filter(([at]) => at >= start)
+    points: (device.series[line.id] ?? []).filter(([at]) => at >= start),
+    range: null
   }))
-  const values = visible.flatMap((line) => line.points.map(([, value]) => value)).filter((value) => value != null)
-  if (!values.length) return
-  let low = Math.min(...values)
-  let high = Math.max(...values)
-  if (high - low < 2) { low -= 1; high += 1 }
-  const pad = { left: 44, right: 8, top: 8, bottom: 22 }
+  for (const line of visible) line.range = axisRange(line.points, line.minSpan)
+  if (!visible.some((line) => line.range)) return
+
+  const pad = { left: 52, right: 52, top: 20, bottom: 22 }
+  const plotHeight = height - pad.top - pad.bottom
   const x = (at) => pad.left + ((at - start) / (end - start)) * (width - pad.left - pad.right)
-  const y = (value) => pad.top + ((high - value) / (high - low)) * (height - pad.top - pad.bottom)
+  const yOf = (range) => (value) => pad.top + ((range.high - value) / (range.high - range.low)) * plotHeight
 
   ctx.font = '600 11px Manrope, sans-serif'
-  ctx.fillStyle = style.getPropertyValue('--muted')
-  ctx.strokeStyle = style.getPropertyValue('--line')
   ctx.lineWidth = 1
+  const grid = visible.find((line) => line.axis === 'left' && line.range) ?? visible.find((line) => line.range)
+  const gridY = yOf(grid.range)
+  ctx.strokeStyle = style.getPropertyValue('--line')
+  ctx.fillStyle = style.getPropertyValue('--muted')
   for (let i = 0; i <= 4; i++) {
-    const value = low + ((high - low) * i) / 4
+    const value = grid.range.low + ((grid.range.high - grid.range.low) * i) / 4
+    const y = gridY(value)
     ctx.beginPath()
-    ctx.moveTo(pad.left, y(value))
-    ctx.lineTo(width - pad.right, y(value))
+    ctx.moveTo(pad.left, y)
+    ctx.lineTo(width - pad.right, y)
     ctx.stroke()
-    ctx.fillText(value.toFixed(1), 4, y(value) + 4)
   }
+  for (const line of visible) {
+    if (!line.range) continue
+    const y = yOf(line.range)
+    const left = line.axis === 'left'
+    ctx.fillStyle = style.getPropertyValue(line.color)
+    ctx.textAlign = left ? 'left' : 'right'
+    ctx.fillText(line.unit, left ? 4 : width - 4, 12)
+    ctx.fillStyle = style.getPropertyValue('--muted')
+    for (let i = 0; i <= 4; i++) {
+      const value = line.range.low + ((line.range.high - line.range.low) * i) / 4
+      ctx.fillText(value.toFixed(line.digits), left ? 4 : width - 4, y(value) + 4)
+    }
+  }
+  ctx.textAlign = 'left'
+  ctx.fillStyle = style.getPropertyValue('--muted')
   for (let i = 0; i <= 4; i++) {
     const at = start + ((end - start) * i) / 4
     const text = new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -111,6 +142,8 @@ function renderChart (device) {
 
   ctx.lineWidth = 2
   for (const line of visible) {
+    if (!line.range) continue
+    const y = yOf(line.range)
     ctx.strokeStyle = style.getPropertyValue(line.color)
     ctx.setLineDash(line.dash)
     ctx.beginPath()
@@ -123,6 +156,7 @@ function renderChart (device) {
     }
     ctx.stroke()
   }
+  ctx.setLineDash([])
 }
 
 function renderMessages (byTopic) {
