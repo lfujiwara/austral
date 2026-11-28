@@ -140,6 +140,17 @@ Para subir também o ESP32 emulado, use `./dev up --lan` ou `AUSTRAL_LAN=1 ./dev
 
 Se o firewall do macOS estiver ligado, ele pode perguntar se o Node pode aceitar conexões de entrada. Permita. Se a pergunta não aparecer: Ajustes do Sistema, Rede, Firewall, Opções, e permita o Node. A única porta na rede é a 8883, com TLS e senha.
 
+## Senha de atualização pelo Wi-Fi (OTA)
+
+A senha de atualização OTA gravada na placa desde 28/11/2026 é `23): E86CtanNULRABrIz`.
+
+Se a gravação pelo Wi-Fi conectar e depois falhar com `Failed to upload`, a senha que está na placa é diferente da que está no `secrets.yaml`. Foi o que aconteceu em 28/11/2026. Nesse caso, grave pelo USB (desligue a bateria antes):
+
+```sh
+cd device/firmware
+~/austral-tools/venv/bin/esphome run device.yaml --device /dev/cu.usbserial-5C3E0313501
+```
+
 ## Ambiente virtual
 
 Requisitos: macOS com Homebrew, Node 20.11 ou mais novo, `uv`, `git`, `openssl` e acesso à internet. O setup baixa o QEMU, o ESPHome e as ferramentas de compilação do ESP32.
