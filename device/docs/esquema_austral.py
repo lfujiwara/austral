@@ -5,7 +5,7 @@ from pathlib import Path
 import schemdraw
 from schemdraw import elements as elm
 
-OUT = Path("/workspace/austral/docs")
+OUT = Path(__file__).resolve().parent
 OUT.mkdir(parents=True, exist_ok=True)
 
 BLK, GRAY, HL, INSTALL, NAVY = "#111111", "#6B7280", "#C2410C", "#9F1239", "#1E3A5F"
