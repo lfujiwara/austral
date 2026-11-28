@@ -33,8 +33,7 @@ try {
   text = readFileSync(examplePath, 'utf8')
 }
 
-if (process.env.AUSTRAL_WIFI_SSID) text = setLine(text, 'wifi_ssid', process.env.AUSTRAL_WIFI_SSID)
-if (process.env.AUSTRAL_WIFI_PASSWORD) text = setLine(text, 'wifi_password', process.env.AUSTRAL_WIFI_PASSWORD)
+const wifiBefore = text
 text = setLine(text, 'mqtt_broker', required('AUSTRAL_MQTT_BROKER'))
 text = setLine(text, 'mqtt_username', required('AUSTRAL_MQTT_USERNAME'))
 text = setLine(text, 'mqtt_password', required('AUSTRAL_MQTT_PASSWORD'))
@@ -44,9 +43,14 @@ text = text.replace(/^mqtt_ca:\s*\|?\r?\n(?:[ \t].*\r?\n)*/m, '')
 const body = ca.split(/\r?\n/).map((line) => `  ${line}`).join('\n')
 text = `${text.replace(/\s*$/, '')}\nmqtt_ca: |\n${body}\n`
 
+const wifiAfter = text
+if (wifiBefore.match(/^wifi_ssid:.*$/m)?.[0] !== wifiAfter.match(/^wifi_ssid:.*$/m)?.[0]) {
+  throw new Error('refusing to change wifi_ssid')
+}
+if (wifiBefore.match(/^wifi_password:.*$/m)?.[0] !== wifiAfter.match(/^wifi_password:.*$/m)?.[0]) {
+  throw new Error('refusing to change wifi_password')
+}
+
 writeFileSync(secretsPath, text, { mode: 0o600 })
 chmodSync(secretsPath, 0o600)
-
-const wifiReady = /^wifi_ssid:\s*"(?!YOUR_2_4_GHZ_NETWORK")[^"]+"\s*$/m.test(text) &&
-  /^wifi_password:\s*"(?!YOUR_WIFI_PASSWORD")[^"]+"\s*$/m.test(text)
-process.stdout.write(wifiReady ? 'wifi=ready\n' : 'wifi=missing\n')
+process.stdout.write('ok\n')

@@ -26,17 +26,17 @@ usage: ./dev <command>
   setup              check host tools, build the emulator, install ESPHome and the server
   build              compile the firmware for the emulator and write a fresh flash image
   ota                compile the firmware and send it to the running emulated device over OTA
-  up                 start the server and the emulated device in the background
+  up [--lan]         start the server and the emulated device in the background
   down               stop them
-  server             run the server in the foreground
+  server [--lan]     run the server in the foreground. --lan opens MQTT TLS on the home network
   emulate            run the emulated device in the foreground
   temps T            set the air temperature (°C, or "unplugged")
   wifi on|off        switch the emulated access points
   scenario NAME      run scenarios/NAME.sh (warm-up, sensor-unplug, wifi-drop)
   test               end-to-end test in the emulator
   logs               follow the device serial log
-  lan prepare        certificate, user and password, and firmware/secrets.yaml for the home network
-  lan serve          MQTT TLS broker and chart on the home network
+  lan prepare        fill firmware/secrets.yaml for the home network, without printing secrets
+  lan serve          same as: ./dev server --lan
 EOF
 }
 
@@ -193,19 +193,16 @@ ensure_control() {
   [ -f "$control_dir/wifi.txt" ] || set_wifi on
 }
 
-cmd_server() {
-  ensure_tls
-  load_credentials
-  [ -d "$root/server/node_modules" ] || { echo "run ./dev setup first" >&2; exit 1; }
-  AUSTRAL_TLS_DIR="$tls_dir" AUSTRAL_HTTP_PORT="$http_port" exec node "$root/server/server.mjs"
-}
-
 detect_lan_ip() {
   if [ -n "${AUSTRAL_LAN_IP:-}" ]; then
     printf '%s\n' "$AUSTRAL_LAN_IP"
     return
   fi
-  local iface ip
+  local preferred="" iface ip
+  if command -v ifconfig >/dev/null 2>&1; then
+    preferred=$(ifconfig 2>/dev/null | awk '/inet /{ print $2 }' | sed 's/^addr://' | awk '/^192\.168\.0\./{ print; exit }')
+  fi
+  if [ -n "$preferred" ]; then printf '%s\n' "$preferred"; return; fi
   if command -v route >/dev/null 2>&1 && route -n get default >/dev/null 2>&1; then
     iface=$(route -n get default 2>/dev/null | awk '/interface:/{print $2; exit}')
     if [ -n "$iface" ] && command -v ipconfig >/dev/null 2>&1; then
@@ -284,30 +281,9 @@ ensure_server_modules() {
   (cd "$root/server" && npm ci --no-audit --no-fund --silent)
 }
 
-prompt_wifi() {
-  [ -t 0 ] || return 0
-  [ -z "${AUSTRAL_WIFI_SSID:-}" ] || return 0
-  local current=""
-  if [ -f "$root/firmware/secrets.yaml" ]; then
-    current=$(awk -F'"' '/^wifi_ssid:/{print $2; exit}' "$root/firmware/secrets.yaml")
-  fi
-  if [ -n "$current" ] && [ "$current" != "YOUR_2_4_GHZ_NETWORK" ]; then
-    return 0
-  fi
-  local ssid password
-  read -r -p "Wi-Fi de 2,4 GHz: " ssid
-  [ -n "$ssid" ] || return 0
-  read -r -s -p "Senha do Wi-Fi: " password
-  printf '\n' >&2
-  [ -n "$password" ] || return 0
-  AUSTRAL_WIFI_SSID=$ssid
-  AUSTRAL_WIFI_PASSWORD=$password
-  export AUSTRAL_WIFI_SSID AUSTRAL_WIFI_PASSWORD
-}
-
 write_lan_secrets() {
   load_credentials
-  local status
+  local status ssid password
   status=$(
     AUSTRAL_SECRETS_FILE="$root/firmware/secrets.yaml" \
     AUSTRAL_SECRETS_EXAMPLE="$root/firmware/example.secrets.yaml" \
@@ -315,11 +291,12 @@ write_lan_secrets() {
     AUSTRAL_MQTT_BROKER="$lan_ip" \
     node "$root/lan-secrets.mjs"
   )
-  case "$status" in
-    wifi=ready) ;;
-    wifi=missing) echo "Preencha wifi_ssid e wifi_password em firmware/secrets.yaml." ;;
-    *) echo "Falha ao escrever firmware/secrets.yaml." >&2; exit 1 ;;
-  esac
+  [ "$status" = "ok" ] || { echo "Falha ao escrever firmware/secrets.yaml." >&2; exit 1; }
+  ssid=$(awk -F'"' '/^wifi_ssid:/{print $2; exit}' "$root/firmware/secrets.yaml")
+  password=$(awk -F'"' '/^wifi_password:/{print $2; exit}' "$root/firmware/secrets.yaml")
+  if [ -z "$ssid" ] || [ "$ssid" = "YOUR_2_4_GHZ_NETWORK" ] || [ -z "$password" ] || [ "$password" = "YOUR_WIFI_PASSWORD" ]; then
+    echo "wifi_ssid e wifi_password não foram alterados. Preencha os dois em firmware/secrets.yaml se ainda estiverem de exemplo."
+  fi
 }
 
 cmd_lan_prepare() {
@@ -328,38 +305,61 @@ cmd_lan_prepare() {
   lan_identity
   issue_server_cert "$lan_san" force
   ensure_server_modules
-  prompt_wifi
   write_lan_secrets
   echo "IP: $lan_ip"
   echo "Nome: $lan_mdns"
-  echo "Broker MQTT: ${lan_ip}:8883"
-  echo "Certificado: .local/tls/server.pem"
-  echo "Secrets: firmware/secrets.yaml"
+  echo "mqtt_broker: $lan_ip"
+  echo "Broker MQTT TLS: ${lan_ip}:8883"
+  echo "mqtt_ca veio de .local/tls/ca.pem e foi gravado em firmware/secrets.yaml."
   echo "Usuário e senha ficam em .local/credentials.env e em firmware/secrets.yaml."
 }
 
-cmd_lan_serve() {
+lan_requested() {
+  [ "${AUSTRAL_LAN:-}" = "1" ] && return 0
+  local arg
+  for arg in "$@"; do
+    [ "$arg" = "--lan" ] && return 0
+  done
+  return 1
+}
+
+cmd_server() {
+  if lan_requested "$@"; then
+    cmd_server_lan
+    return
+  fi
+  ensure_tls
+  load_credentials
+  [ -d "$root/server/node_modules" ] || { echo "run ./dev setup first" >&2; exit 1; }
+  AUSTRAL_TLS_DIR="$tls_dir" AUSTRAL_HTTP_PORT="$http_port" exec node "$root/server/server.mjs"
+}
+
+cmd_server_lan() {
   need openssl "install it first"
   need node "install Node 20.11 or newer"
   lan_identity
-  [ -f "$root/firmware/secrets.yaml" ] || { echo "Rode ./dev lan prepare antes de gravar a placa." >&2; exit 1; }
   issue_server_cert "$lan_san" force
   ensure_server_modules
   load_credentials
-  local flashed
-  flashed=$(awk -F'"' '/^mqtt_broker:/{print $2; exit}' "$root/firmware/secrets.yaml")
-  if [ -n "$flashed" ] && [ "$flashed" != "$lan_ip" ]; then
-    echo "O secrets.yaml aponta para ${flashed} e este computador está em ${lan_ip}." >&2
-    echo "Rode ./dev lan prepare de novo e grave o firmware outra vez." >&2
+  if [ -f "$root/firmware/secrets.yaml" ]; then
+    local flashed
+    flashed=$(awk -F'"' '/^mqtt_broker:/{print $2; exit}' "$root/firmware/secrets.yaml")
+    if [ -n "$flashed" ] && [ "$flashed" != "$lan_ip" ] && [ "$flashed" != "$lan_mdns" ]; then
+      echo "O secrets.yaml aponta para ${flashed} e este computador está em ${lan_ip}." >&2
+      echo "Rode ./dev lan prepare de novo e grave o firmware outra vez." >&2
+    fi
   fi
-  echo "Broker MQTT: ${lan_ip}:8883"
-  echo "Gráfico: http://${lan_ip}:${http_port}"
+  echo "Broker MQTT TLS: ${lan_ip}:8883"
+  echo "Gráfico neste Mac: http://127.0.0.1:${http_port}"
   echo "Nome na rede: ${lan_mdns}"
-  AUSTRAL_BIND=0.0.0.0 \
-  AUSTRAL_LAN_HOSTS="${lan_ip},${lan_mdns}" \
+  AUSTRAL_MQTT_BIND=0.0.0.0 \
   AUSTRAL_TLS_DIR="$tls_dir" \
   AUSTRAL_HTTP_PORT="$http_port" \
   exec node "$root/server/server.mjs"
+}
+
+cmd_lan_serve() {
+  cmd_server_lan
 }
 
 cmd_ota() {
@@ -418,7 +418,15 @@ start_background() {
 }
 
 cmd_up() {
-  start_background server "$0" server
+  if lan_requested "$@"; then
+    lan_identity
+    issue_server_cert "$lan_san" force
+    echo "Broker MQTT TLS: ${lan_ip}:8883"
+    echo "Nome na rede: ${lan_mdns}"
+    start_background server "$0" server --lan
+  else
+    start_background server "$0" server
+  fi
   start_background device "$0" emulate
   echo "chart:      http://127.0.0.1:$http_port"
   echo "device web: http://127.0.0.1:$device_web_port"
@@ -452,9 +460,9 @@ case "$command" in
   setup) cmd_setup ;;
   build) cmd_build ;;
   ota) cmd_ota ;;
-  up) cmd_up ;;
+  up) cmd_up "$@" ;;
   down) cmd_down ;;
-  server) cmd_server ;;
+  server) cmd_server "$@" ;;
   emulate) cmd_emulate ;;
   temps) [ $# -eq 1 ] || { usage; exit 1; }; set_temps "$1" ;;
   wifi) [ $# -eq 1 ] || { usage; exit 1; }; set_wifi "$1" ;;

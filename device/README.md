@@ -79,22 +79,26 @@ A página do servidor mostra o último payload bruto de cada tópico e se ele ba
 
 ## Rede de casa no Mac
 
-O broker MQTT com TLS escuta na rede de casa e aceita a placa. O certificado inclui o IP do Mac e o nome `.local`. O usuário e a senha ficam em `.local/credentials.env` e em `firmware/secrets.yaml`. O comando não imprime esses valores.
+A placa manda as leituras para o broker MQTT deste repositório, com TLS e senha. O modo normal continua só em `127.0.0.1`. A rede de casa entra com `--lan` ou com `AUSTRAL_LAN=1`. Nesse modo a porta 8883 abre na rede, só com TLS. O gráfico fica em `http://127.0.0.1:8080`, neste Mac. Nenhuma porta sem TLS fica na rede.
 
-A placa precisa estar no Wi-Fi de 2,4 GHz, o mesmo do Mac. Se o IP do Mac mudar, rode `./dev lan prepare` de novo e grave o firmware outra vez. O firewall do macOS pode pedir permissão para o Node receber conexões. Permita.
+A placa precisa do Wi-Fi de 2,4 GHz, o mesmo do Mac. Se o Mac estiver em `192.168.0.x`, o comando usa esse endereço. Se o IP mudar, rode `./dev lan prepare` de novo e grave o firmware outra vez. Rodar de novo mantém o mesmo usuário e a mesma senha.
 
-Requisitos: Node 20.11 ou mais novo, Python 3 e `openssl`. O `openssl` já vem no macOS.
-
-Rodar `./dev lan prepare` de novo mantém o mesmo usuário e a mesma senha.
+Requisitos: Node 20.11 ou mais novo, Python 3 e `openssl`. O `openssl` já vem no macOS. Não precisa de Docker.
 
 ```sh
 cd device
 ./dev lan prepare
 ```
 
-Se o comando pedir o Wi-Fi, digite o nome da rede e a senha. A senha não aparece na tela. Se ele avisar que faltam `wifi_ssid` e `wifi_password`, preencha os dois em `firmware/secrets.yaml` e não copie esse arquivo para outro lugar.
+O comando grava em `firmware/secrets.yaml`, sem mostrar senha:
 
-Instale o ESPHome usado por este repositório e grave a placa, ligada por USB:
+- `mqtt_broker`: o IP da rede, por exemplo `192.168.0.23`. Use esse IP. O certificado também traz o nome `<hostname>.local`. Só troque `mqtt_broker` por esse nome se quiser que a placa disque o nome em vez do IP.
+- `mqtt_username` e `mqtt_password`: gerados em `.local/credentials.env`.
+- `mqtt_ca`: o conteúdo de `.local/tls/ca.pem`, a autoridade que assina o broker. O comando cola esse texto no secrets. Não use o certificado do servidor no lugar da autoridade.
+
+`wifi_ssid` e `wifi_password` não são alterados. Se ainda estiverem de exemplo, preencha os dois no mesmo arquivo. Não copie o arquivo para outro lugar.
+
+Grave a placa, ligada por USB:
 
 ```sh
 cd device
@@ -104,16 +108,16 @@ cd firmware
 ../.local/venv/bin/esphome run device.yaml
 ```
 
-Em outro terminal, suba o broker e o gráfico:
+Suba o broker. O gráfico abre só neste Mac.
 
 ```sh
 cd device
-./dev lan serve
+./dev server --lan
 ```
 
-O comando mostra o IP, a porta 8883 e o endereço do gráfico, no formato `http://<ip>:8080`. O nome `.local` também está no certificado. O `secrets.yaml` usa o IP, que é o endereço que a placa disca.
+Para subir também o ESP32 emulado, use `./dev up --lan` ou `AUSTRAL_LAN=1 ./dev up`. Sem `--lan` e sem a variável, tudo continua em `127.0.0.1`.
 
-`./dev up` continua só em `127.0.0.1`, para o emulador. `./dev lan serve` escuta na rede de casa.
+Se o firewall do macOS estiver ligado, ele pode perguntar se o Node pode aceitar conexões de entrada. Permita. Se a pergunta não aparecer: Ajustes do Sistema, Rede, Firewall, Opções, e permita o Node. A única porta na rede é a 8883, com TLS e senha.
 
 ## Ambiente virtual
 
