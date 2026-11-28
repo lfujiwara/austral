@@ -4,10 +4,13 @@ substitutions:
   door_margin: "0.05"
   # Offline variant. Set this to packages/buzzer.yaml to enable the audible alarm.
   buzzer_package: packages/buzzer_off.yaml
+  # Offline variant. Set this to packages/display.yaml to enable the OLED.
+  display_package: packages/display_off.yaml
   default_broker: !secret mqtt_broker
 
 packages:
   buzzer: !include ${buzzer_package}
+  display: !include ${display_package}
 
 esphome:
   name: ${device_name}
@@ -66,29 +69,6 @@ mqtt:
   password: !secret mqtt_password
   topic_prefix: austral/${device_name}
   discovery: false
-
-i2c:
-  sda: GPIO21
-  scl: GPIO22
-  scan: true
-
-font:
-  - file: "gfonts://Roboto"
-    id: display_font
-    size: 10
-
-display:
-  - platform: ssd1306_i2c
-    model: "SSD1306 128x32"
-    address: 0x3C
-    update_interval: 2s
-    lambda: |-
-      auto text = [](sensor::Sensor *s) { return s->has_state() ? str_sprintf("%.1f", s->state) : std::string("--"); };
-      auto meters = [](sensor::Sensor *s) { return s->has_state() ? str_sprintf("%.2f", s->state) : std::string("--"); };
-      const char *door = id(door_open).has_state() ? (id(door_open).state ? "open" : "shut") : "--";
-      it.printf(0, 0, id(display_font), "Air %s %s", text(id(air_temperature)).c_str(), id(local_alarm).state ? "ALARM!" : "ok");
-      it.printf(0, 11, id(display_font), "Door %s %s", meters(id(door_distance)).c_str(), door);
-      it.printf(0, 22, id(display_font), "WiFi %s  MQTT %s", id(wifi_client).is_connected() ? "ok" : "--", id(mqtt_client)->is_connected() ? "ok" : "--");
 
 one_wire:
   - platform: gpio

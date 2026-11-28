@@ -2,13 +2,15 @@
 
 Firmware do dispositivo Austral e um ambiente de desenvolvimento virtual. O ambiente roda o firmware num ESP32 emulado, com sensores e Wi-Fi simulados, e mostra as leituras num gráfico. Não precisa de placa nem de sensores.
 
-Esta branch é a variante offline. A buzina fica fora do firmware que a placa roda. A seção "Buzina" explica como religar.
+Esta branch é a variante offline. A buzina e a tela ficam fora do firmware que a placa roda. As seções "Buzina" e "Tela" explicam como religar.
 
 ## O que tem aqui
 
 - `firmware/device.yaml`: firmware em ESPHome para ESP32.
 - `firmware/packages/buzzer.yaml`: buzina no GPIO25 e as ações que a ligam no alarme local. A variante offline inclui `packages/buzzer_off.yaml` no lugar dele.
 - `firmware/packages/buzzer_off.yaml`: pacote vazio incluído no lugar da buzina.
+- `firmware/packages/display.yaml`: tela OLED. A variante offline inclui `packages/display_off.yaml` no lugar dele.
+- `firmware/packages/display_off.yaml`: pacote vazio incluído no lugar da tela.
 - `schema/mqtt.json`: formato de cada tópico MQTT que o dispositivo publica ou aceita.
 - `emulator/`: script que compila o QEMU com Wi-Fi para ESP32 e os patches deste repositório.
 - `server/`: servidor local. É o broker MQTT com TLS e serve a página com o gráfico.
@@ -30,7 +32,7 @@ As leituras saem por MQTT com TLS na porta 8883. A seção "Formato dos dados" d
 
 O alarme local observa a sonda de ar. O limite padrão é 5,0 °C. A entidade "Alarm threshold" guarda esse limite na flash. Dá para mudar pela página web do dispositivo ou por `number/alarm_threshold/command`, de -40 a 40 °C, em passos de 0,1. O alarme publica `ON` quando o ar fica acima do limite por 10 minutos e `OFF` 1 minuto depois de voltar ao limite ou abaixo. Funciona sem Wi-Fi e sem MQTT. Nesta variante o alarme local só publica o estado.
 
-O display OLED SSD1306 de 128x32 permanece no firmware. O I2C usa SDA no GPIO21 e SCL no GPIO22, no endereço 0x3C. A tela mostra a temperatura do ar, o alarme local, a distância e o estado da porta, e o estado do Wi-Fi e do MQTT. O endereço do broker pode mudar pelo servidor web do dispositivo ou por MQTT. O novo endereço fica salvo na flash.
+Nesta variante a tela não entra no firmware. O endereço do broker pode mudar pelo servidor web do dispositivo ou por MQTT. O novo endereço fica salvo na flash.
 
 Para gravar numa placa real na rede de casa, siga a seção "Rede de casa no Mac". O código ROM da sonda aparece no log do primeiro boot.
 
@@ -47,6 +49,18 @@ buzzer_package: packages/buzzer.yaml
 ```
 
 A chave volta a publicar `switch/buzzer/state` (`ON` ou `OFF`) e a aceitar `switch/buzzer/command` (`ON`, `OFF` ou `TOGGLE`). Inclua esses dois tópicos de novo em `schema/mqtt.json` para o servidor e o `./dev test` aceitarem as mensagens. O teste também recusa qualquer tópico com `buzzer` no nome. Tire essa checagem ao religar a buzina.
+
+## Tela
+
+O código da tela continua no repositório, em `firmware/packages/display.yaml`. Ele liga o OLED SSD1306 de 128x32 no I2C, SDA no GPIO21 e SCL no GPIO22, endereço 0x3C. A tela alterna duas páginas a cada 6 segundos: o gráfico do ar nos últimos 30 minutos, com o valor atual e o limite ao lado, e a página com porta, alarme, Wi-Fi e MQTT.
+
+`firmware/device.yaml` escolhe o pacote pela substituição `display_package`. Esta branch aponta para `packages/display_off.yaml`. Esse pacote entra vazio. O I2C não sobe e a tela não é inicializada.
+
+Para religar a tela, troque a substituição e grave o firmware de novo:
+
+```yaml
+display_package: packages/display.yaml
+```
 
 ## Formato dos dados
 

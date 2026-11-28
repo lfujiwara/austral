@@ -1,0 +1,3 @@
+# Offline variant. This package is intentionally empty.
+# Set display_package in device.yaml to packages/display.yaml to load the OLED.
+{}

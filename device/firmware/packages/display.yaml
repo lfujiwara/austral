@@ -1,0 +1,68 @@
+# OLED SSD1306 128x32. The offline variant does not load this package.
+# Set display_package in device.yaml to packages/display.yaml to enable it.
+i2c:
+  sda: GPIO21
+  scl: GPIO22
+  scan: true
+
+font:
+  - file: "gfonts://Roboto"
+    id: display_font
+    size: 10
+
+sensor:
+  # Feeds the dashed trace. Internal, so it is not published over MQTT.
+  - platform: template
+    name: "Alarm threshold trace"
+    id: alarm_threshold_trace
+    internal: true
+    accuracy_decimals: 1
+    update_interval: 10s
+    lambda: |-
+      float threshold = id(alarm_threshold).state;
+      if (std::isnan(threshold)) return {};
+      return threshold;
+
+# 30 minutes across 96 px. The dashed trace is the adjustable alarm threshold.
+graph:
+  - id: air_graph
+    duration: 30min
+    width: 96
+    height: 32
+    border: true
+    traces:
+      - sensor: air_temperature
+        line_thickness: 1
+        line_type: SOLID
+        continuous: true
+      - sensor: alarm_threshold_trace
+        line_thickness: 1
+        line_type: DASHED
+        continuous: true
+
+display:
+  - platform: ssd1306_i2c
+    id: oled
+    model: "SSD1306 128x32"
+    address: 0x3C
+    update_interval: 2s
+    pages:
+      - id: page_graph
+        lambda: |-
+          it.graph(0, 0, id(air_graph));
+          if (id(air_temperature).has_state()) it.printf(98, 1, id(display_font), "%.1f", id(air_temperature).state);
+          else it.printf(98, 1, id(display_font), "--");
+          if (!std::isnan(id(alarm_threshold).state)) it.printf(98, 17, id(display_font), "%.1f", id(alarm_threshold).state);
+      - id: page_status
+        lambda: |-
+          auto meters = [](sensor::Sensor *s) { return s->has_state() ? str_sprintf("%.2f", s->state) : std::string("--"); };
+          const char *door = id(door_open).has_state() ? (id(door_open).state ? "open" : "shut") : "--";
+          it.printf(0, 0, id(display_font), "Door %s %s", meters(id(door_distance)).c_str(), door);
+          it.printf(0, 11, id(display_font), "%s", id(local_alarm).state ? "ALARM!" : "ok");
+          it.printf(0, 22, id(display_font), "WiFi %s  MQTT %s", id(wifi_client).is_connected() ? "ok" : "--", id(mqtt_client)->is_connected() ? "ok" : "--");
+
+interval:
+  - interval: 6s
+    then:
+      - display.page.show_next: oled
+      - component.update: oled
