@@ -46,7 +46,7 @@
       "topic": "binary_sensor/local_temperature_alarm/state",
       "pattern": "^(ON|OFF)$",
       "at_boot": false,
-      "description": "ON after the air stays above -12 °C for 10 minutes. OFF 1 minute after it drops back. Published only when it changes. Does not drive the buzzer in this variant."
+      "description": "ON after the air stays above number/alarm_threshold for 10 minutes. OFF 1 minute after it returns to the threshold or below. Published only when it changes. Does not drive the buzzer in this variant."
     },
     {
       "topic": "text/mqtt_broker/state",
@@ -64,6 +64,12 @@
       "pattern": "^(?:[0-3](?:\\.\\d+)?|4(?:\\.0+)?)$",
       "unit": "m",
       "description": "Calibrated distance of the closed door. Stored in flash. 0 means not calibrated."
+    },
+    {
+      "topic": "number/alarm_threshold/state",
+      "pattern": "^(-?(?:[0-9](?:\\.\\d+)?|[1-3][0-9](?:\\.\\d+)?|40(?:\\.0+)?))$",
+      "unit": "°C",
+      "description": "Air temperature above which the local alarm can turn on. Stored in flash. Default 5.0. Range -40 to 40 in steps of 0.1."
     },
     {
       "topic": "debug",
@@ -86,6 +92,11 @@
       "topic": "number/door_closed_distance/command",
       "pattern": "^(?:[0-3](?:\\.\\d+)?|4(?:\\.0+)?)$",
       "description": "Sets the closed-door distance in meters, 0 to 4. Stored in flash. 0 clears the calibration."
+    },
+    {
+      "topic": "number/alarm_threshold/command",
+      "pattern": "^(-?(?:[0-9](?:\\.\\d+)?|[1-3][0-9](?:\\.\\d+)?|40(?:\\.0+)?))$",
+      "description": "Sets the air alarm threshold in °C, -40 to 40 in steps of 0.1. Stored in flash."
     },
     {
       "topic": "button/calibrate_door/command",

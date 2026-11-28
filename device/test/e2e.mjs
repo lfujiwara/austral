@@ -45,12 +45,14 @@ async function checkSchema () {
   const missing = schema.published.filter((entry) => entry.at_boot !== false && seen[entry.topic]?.valid !== true)
   const offSchema = Object.entries(seen).filter(([, message]) => message.invalid > 0)
   const buzzer = Object.keys(seen).filter((topic) => topic.toLowerCase().includes('buzzer'))
-  if (missing.length || offSchema.length || buzzer.length) {
+  const threshold = seen['number/alarm_threshold/state']
+  const thresholdValue = Number(threshold?.payload)
+  if (missing.length || offSchema.length || buzzer.length || threshold?.valid !== true || thresholdValue !== 5) {
     throw new Error(`schema: missing or invalid ${JSON.stringify(missing.map((entry) => entry.topic))}, ` +
       `off schema ${JSON.stringify(offSchema.map(([topic, message]) => [topic, message.invalid, message.payload]))}, ` +
-      `buzzer ${JSON.stringify(buzzer)}`)
+      `buzzer ${JSON.stringify(buzzer)}, alarm threshold ${threshold?.payload}`)
   }
-  console.log(`ok  every message matches schema/mqtt.json (${Object.keys(seen).length} topics, buzzer disabled)`)
+  console.log(`ok  every message matches schema/mqtt.json (${Object.keys(seen).length} topics, buzzer disabled, alarm threshold 5 °C)`)
 }
 
 let failed = false

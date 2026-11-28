@@ -1,6 +1,5 @@
 substitutions:
   device_name: austral-device
-  alarm_threshold: "-12.0"
   # Meters above the closed-door baseline before the door counts as open.
   door_margin: "0.05"
   # Offline variant. Set this to packages/buzzer.yaml to enable the audible alarm.
@@ -210,6 +209,18 @@ number:
     restore_value: true
     optimistic: true
 
+  - platform: template
+    name: "Alarm threshold"
+    id: alarm_threshold
+    unit_of_measurement: "°C"
+    min_value: -40
+    max_value: 40
+    step: 0.1
+    mode: box
+    initial_value: 5.0
+    restore_value: true
+    optimistic: true
+
 binary_sensor:
   - platform: template
     name: "Door open"
@@ -228,7 +239,9 @@ binary_sensor:
     name: "Local temperature alarm"
     id: local_alarm
     lambda: |-
-      return id(air_temperature).has_state() && id(air_temperature).state > ${alarm_threshold};
+      float threshold = id(alarm_threshold).state;
+      if (!id(air_temperature).has_state() || std::isnan(threshold)) return {};
+      return id(air_temperature).state > threshold;
     filters:
       - delayed_on: 10min
       - delayed_off: 1min

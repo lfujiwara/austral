@@ -28,7 +28,7 @@ O estado da porta sai da distância do HC-SR04. Feche a porta e aperte "Calibrat
 
 As leituras saem por MQTT com TLS na porta 8883. A seção "Formato dos dados" descreve os tópicos.
 
-O alarme local observa a sonda de ar. Publica `ON` quando o ar fica acima de -12 °C por 10 minutos e `OFF` 1 minuto depois de voltar. Funciona sem Wi-Fi e sem MQTT. Nesta variante o alarme local só publica o estado.
+O alarme local observa a sonda de ar. O limite padrão é 5,0 °C. A entidade "Alarm threshold" guarda esse limite na flash. Dá para mudar pela página web do dispositivo ou por `number/alarm_threshold/command`, de -40 a 40 °C, em passos de 0,1. O alarme publica `ON` quando o ar fica acima do limite por 10 minutos e `OFF` 1 minuto depois de voltar ao limite ou abaixo. Funciona sem Wi-Fi e sem MQTT. Nesta variante o alarme local só publica o estado.
 
 O display OLED SSD1306 de 128x32 permanece no firmware. O I2C usa SDA no GPIO21 e SCL no GPIO22, no endereço 0x3C. A tela mostra a temperatura do ar, o alarme local, a distância e o estado da porta, e o estado do Wi-Fi e do MQTT. O endereço do broker pode mudar pelo servidor web do dispositivo ou por MQTT. O novo endereço fica salvo na flash.
 
@@ -66,13 +66,14 @@ Os tópicos do dispositivo começam com `austral/<dispositivo>/`. O payload é t
 | `text/mqtt_broker/state` | endereço do broker | | quando muda |
 | `number/read_interval/state` | número | s | quando muda |
 | `number/door_closed_distance/state` | número | m | quando muda |
+| `number/alarm_threshold/state` | número | °C | quando muda |
 | `debug` | linha de log do dispositivo | | a cada log |
 
 `nan` indica um sensor que não respondeu. O broker publica `offline` em nome do dispositivo quando perde a conexão com ele. `binary_sensor/door_open/state` só aparece depois da calibração.
 
 O ESPHome também publica `esphome/discover/<dispositivo>` a cada conexão, com `retain`. O payload é um JSON com os endereços IP, o MAC, a versão do ESPHome e a placa. Esse tópico fica fora do prefixo e o servidor não confere o formato dele.
 
-O dispositivo aceita quatro comandos: `text/mqtt_broker/command` (novo endereço), `number/read_interval/command` (segundos), `number/door_closed_distance/command` (metros) e `button/calibrate_door/command` (`PRESS`).
+O dispositivo aceita cinco comandos: `text/mqtt_broker/command` (novo endereço), `number/read_interval/command` (segundos), `number/door_closed_distance/command` (metros), `number/alarm_threshold/command` (°C, de -40 a 40) e `button/calibrate_door/command` (`PRESS`).
 
 A página do servidor mostra o último payload bruto de cada tópico e se ele bate com o schema.
 
@@ -96,14 +97,14 @@ Com o ambiente no ar, a sonda e o Wi-Fi mudam assim:
 ./dev temps unplugged     # a sonda de ar sai do barramento
 ./dev wifi off            # o ponto de acesso cai
 ./dev wifi on
-./dev scenario warm-up    # o ar passa de -12 °C e o alarme local muda; a buzina continua desligada
+./dev scenario warm-up    # o ar passa de 5 °C e o alarme local muda; a buzina continua desligada
 ```
 
 Os cenários prontos são `warm-up`, `sensor-unplug` e `wifi-drop`.
 
 Para testar uma mudança no firmware, edite `firmware/device.yaml` e rode `./dev ota` com o ambiente no ar. O comando compila e envia o firmware por OTA, como numa placa real. O dispositivo reinicia na versão nova sem perder a flash. `./dev build` grava uma flash nova e só roda com o dispositivo parado.
 
-`./dev test` sobe tudo e confere a conexão, a hora por SNTP, as leituras, a sonda desconectada, a volta depois de uma queda do Wi-Fi, uma atualização por OTA, o schema de todas as mensagens e a ausência da buzina.
+`./dev test` sobe tudo e confere a conexão, a hora por SNTP, as leituras, a sonda desconectada, a volta depois de uma queda do Wi-Fi, uma atualização por OTA, o schema de todas as mensagens, o limite padrão de 5 °C e a ausência da buzina.
 
 ## Como o emulador funciona
 
