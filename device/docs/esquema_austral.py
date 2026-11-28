@@ -393,8 +393,8 @@ r2 = d.add(
     .at((XJ, g27[1]))
     .down()
     .toy(YG + 0.85)
-    .label("2 kΩ", loc="lft", fontsize=9)
 )
+d.add(elm.Label().at((XJ + 0.30, (g27[1] + YG + 0.85) / 2)).label("2 kΩ", fontsize=9, halign="left"))
 line("GND", r2.end, (XJ, YG))
 dot((XJ, YG))
 
