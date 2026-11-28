@@ -19,9 +19,15 @@ esphome:
     priority: -100
     then:
       - lambda: |-
-          id(air_temperature)->stop_poller();
-          id(air_temperature)->set_update_interval((uint32_t) id(read_interval).state * 1000);
-          id(air_temperature)->start_poller();
+          float interval = id(read_interval).state;
+          if (std::isnan(interval) || interval < 1 || interval > 300) {
+            ESP_LOGW("read_interval", "Restored read interval %g s is invalid, using 10 s", interval);
+            id(read_interval).make_call().set_value(10).perform();
+          } else {
+            id(air_temperature)->stop_poller();
+            id(air_temperature)->set_update_interval((uint32_t) interval * 1000);
+            id(air_temperature)->start_poller();
+          }
           if (id(mqtt_broker).state.size() >= 3 && id(mqtt_broker).state != "${default_broker}") {
             id(mqtt_client)->set_broker_address(id(mqtt_broker).state);
             id(mqtt_client)->disable();
@@ -179,7 +185,7 @@ number:
     name: "Read interval"
     id: read_interval
     unit_of_measurement: s
-    min_value: 5
+    min_value: 1
     max_value: 300
     step: 5
     initial_value: 10

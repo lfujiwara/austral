@@ -60,9 +60,9 @@
     },
     {
       "topic": "number/read_interval/state",
-      "pattern": "^(5|[1-9][05]|[12]\\d[05]|300)\\.0+$",
+      "pattern": "^([1-9]|[1-9][0-9]|[12][0-9]{2}|300)\\.0+$",
       "unit": "s",
-      "description": "Air probe polling interval, 5 to 300 in steps of 5. Stored in flash."
+      "description": "Air probe polling interval, 1 to 300. Stored in flash."
     },
     {
       "topic": "number/door_closed_distance/state",
@@ -90,8 +90,8 @@
     },
     {
       "topic": "number/read_interval/command",
-      "pattern": "^(5|[1-9][05]|[12]\\d[05]|300)(\\.0+)?$",
-      "description": "Changes the air probe polling interval in seconds, 5 to 300 in steps of 5. Stored in flash."
+      "pattern": "^([1-9]|[1-9][0-9]|[12][0-9]{2}|300)(\\.0+)?$",
+      "description": "Changes the air probe polling interval in seconds, 1 to 300. Stored in flash."
     },
     {
       "topic": "number/door_closed_distance/command",

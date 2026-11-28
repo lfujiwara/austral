@@ -20,7 +20,7 @@ Esta branch é a variante offline. A buzina e a tela ficam fora do firmware que 
 
 ## Firmware
 
-O firmware lê um DS18B20 no barramento 1-Wire do GPIO4, a sonda de ar. Ele pega o primeiro dispositivo que a busca ROM encontra no setup (`index: 0`), sem endereço gravado. Lê a cada 10 segundos, com resolução de 12 bits. O intervalo vai de 5 a 300 segundos e fica salvo na flash.
+O firmware lê um DS18B20 no barramento 1-Wire do GPIO4, a sonda de ar. Ele pega o primeiro dispositivo que a busca ROM encontra no setup (`index: 0`), sem endereço gravado. Lê a cada 10 segundos, com resolução de 12 bits. O intervalo vai de 1 a 300 segundos e fica salvo na flash.
 
 ## Sensores e ligação
 
